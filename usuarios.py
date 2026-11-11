@@ -2,32 +2,39 @@
 
   python usuarios.py listar
   python usuarios.py criar NOME
+  python usuarios.py email NOME      (define/troca o e-mail que recebe o código de login)
   python usuarios.py senha NOME      (redefine a senha)
   python usuarios.py remover NOME
 """
 import getpass
 import sys
 
-from werkzeug.security import generate_password_hash
-
-from app import Usuario, app, db
+from app import SENHA_MIN, Usuario, app, db, email_valido, mascarar_email
+from seguranca import hash_senha
 
 
 def pedir_senha():
-    senha = getpass.getpass('Senha (mínimo 8 caracteres): ')
-    if len(senha) < 8 or senha != getpass.getpass('Repita a senha: '):
+    senha = getpass.getpass(f'Senha (mínimo {SENHA_MIN} caracteres): ')
+    if len(senha) < SENHA_MIN or senha != getpass.getpass('Repita a senha: '):
         sys.exit('Senha curta demais ou diferente da confirmação.')
-    return generate_password_hash(senha)
+    return hash_senha(senha)
+
+
+def pedir_email():
+    email = input('E-mail para receber o código de login: ').strip()
+    if not email_valido(email):
+        sys.exit('E-mail inválido.')
+    return email
 
 
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ('listar', 'criar', 'senha', 'remover'):
+    if len(sys.argv) < 2 or sys.argv[1] not in ('listar', 'criar', 'senha', 'email', 'remover'):
         sys.exit(__doc__)
     comando = sys.argv[1]
     with app.app_context():
         if comando == 'listar':
             for u in Usuario.query.order_by(Usuario.nome).all():
-                print(u.nome)
+                print(u.nome, mascarar_email(u.email) if u.email else '(sem e-mail: não consegue entrar)')
             return
         if len(sys.argv) < 3:
             sys.exit('Informe o nome do usuário.')
@@ -36,11 +43,15 @@ def main():
         if comando == 'criar':
             if usuario:
                 sys.exit('Esse usuário já existe.')
-            db.session.add(Usuario(nome=nome, senha_hash=pedir_senha()))
+            novo = Usuario(nome=nome, senha_hash=pedir_senha())
+            novo.definir_email(pedir_email())
+            db.session.add(novo)
         elif not usuario:
             sys.exit('Usuário não encontrado.')
         elif comando == 'senha':
             usuario.senha_hash = pedir_senha()
+        elif comando == 'email':
+            usuario.definir_email(pedir_email())
         else:
             db.session.delete(usuario)
         db.session.commit()

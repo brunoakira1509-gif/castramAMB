@@ -2,23 +2,23 @@
 {% block title %}Agendamentos{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Agendamentos</h1></div>
-<form method="POST" class="card">
+<form method="POST" class="card"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field full">
         <label for="tutor_id">Tutor</label>
-        <select name="tutor_id" id="tutor_id" onchange="this.form.submit()">
+        <select name="tutor_id" id="tutor_id" data-autosubmit>
             <option value="">Escolher tutor</option>
             {% for tutor in tutores %}
                 <option value="{{ tutor.id }}" {% if selected_tutor and selected_tutor.id == tutor.id %}selected{% endif %}>{{ tutor.nome_completo }}</option>
             {% endfor %}
         </select>
-        <noscript><button type="submit" class="btn secondary" style="margin-top: 10px;">Selecionar</button></noscript>
+        <noscript><button type="submit" class="btn secondary mt-10">Selecionar</button></noscript>
     </div>
 </form>
 {% if selected_tutor %}
 <section class="card">
     <div class="card-head"><h2>Agendar castração para {{ selected_tutor.nome_completo }}</h2></div>
     {% if animais %}
-    <form method="POST" action="{{ url_for('agendar') }}">
+    <form method="POST" action="{{ url_for('agendar') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-grid">
             <div class="field full">
                 <label for="animal_id">Animal</label>

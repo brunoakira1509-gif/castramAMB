@@ -2,11 +2,11 @@
 {% block title %}Alterar senha{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Alterar senha</h1></div>
-<form method="POST" class="card" style="max-width: 440px;">
+<form method="POST" class="card mw-440"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
         <div class="field full"><label for="atual">Senha atual</label><input type="password" id="atual" name="atual" autocomplete="current-password" required autofocus></div>
-        <div class="field full"><label for="senha">Nova senha</label><input type="password" id="senha" name="senha" minlength="8" autocomplete="new-password" required><p class="hint">Mínimo de 8 caracteres.</p></div>
-        <div class="field full"><label for="confirmacao">Repita a nova senha</label><input type="password" id="confirmacao" name="confirmacao" minlength="8" autocomplete="new-password" required></div>
+        <div class="field full"><label for="senha">Nova senha</label><input type="password" id="senha" name="senha" minlength="10" autocomplete="new-password" required><p class="hint">Mínimo de 10 caracteres.</p></div>
+        <div class="field full"><label for="confirmacao">Repita a nova senha</label><input type="password" id="confirmacao" name="confirmacao" minlength="10" autocomplete="new-password" required></div>
     </div>
     <div class="form-actions"><button type="submit" class="btn">Salvar nova senha</button></div>
 </form>

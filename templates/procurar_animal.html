@@ -3,7 +3,7 @@
 {% block title %}Procurar animal{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Procurar animal</h1></div>
-<form method="POST" class="card">
+<form method="POST" class="card"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="search-row">
         <div class="field">
             <label for="busca">Nome ou microchip</label>

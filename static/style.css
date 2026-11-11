@@ -164,3 +164,8 @@ button.nav-link { width: 100%; border: 0; background: none; font: inherit; font-
 .auth-card h1 { margin-bottom: 4px; }
 .auth-card .form-grid { margin-top: 20px; }
 .auth-card .btn { width: 100%; }
+
+/* utilitários (antes eram style="" inline; a política de segurança bloqueia estilos inline) */
+.mt-8 { margin-top: 8px; }
+.mt-10 { margin-top: 10px; }
+.mw-440 { max-width: 440px; }

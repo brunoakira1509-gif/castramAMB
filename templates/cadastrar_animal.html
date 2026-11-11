@@ -2,12 +2,12 @@
 {% block title %}Cadastrar animal{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Cadastrar animal</h1></div>
-<form method="POST" class="card">
+<form method="POST" class="card"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
         <div class="field full">
             <label for="tutor-busca">Tutor</label>
             <input type="search" id="tutor-busca" placeholder="Filtrar por nome ou CPF" data-filter-select="tutor_id" autocomplete="off">
-            <select name="tutor_id" id="tutor_id" size="5" required style="margin-top: 8px;" aria-label="Lista de tutores">
+            <select name="tutor_id" id="tutor_id" size="5" required class="mt-8" aria-label="Lista de tutores">
                 {% for tutor in tutores %}
                     <option value="{{ tutor.id }}">{{ tutor.nome_completo }} - {{ tutor.cpf }}</option>
                 {% endfor %}

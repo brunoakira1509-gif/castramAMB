@@ -9,7 +9,7 @@
         <p class="muted">Tutor: <a href="{{ url_for('tutor_perfil', id=animal.tutor_id) }}">{{ animal.tutor.nome_completo }}</a></p>
     </div>
 </div>
-<form method="POST" class="card">
+<form method="POST" class="card"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
         <div class="field"><label for="nome">Nome</label><input type="text" id="nome" name="nome" value="{{ animal.nome }}" required></div>
         <div class="field"><label for="raca">Raça</label><input type="text" id="raca" name="raca" value="{{ animal.raca }}" required></div>

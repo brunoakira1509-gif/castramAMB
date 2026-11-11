@@ -24,6 +24,11 @@
         });
     });
 
+    // Envia o formulário ao trocar a seleção (substitui o onchange inline, bloqueado pela política de segurança)
+    document.querySelectorAll('select[data-autosubmit]').forEach(function (select) {
+        select.addEventListener('change', function () { select.form.submit(); });
+    });
+
     // Filtro de uma lista de seleção enquanto digita
     document.querySelectorAll('[data-filter-select]').forEach(function (input) {
         var select = document.getElementById(input.dataset.filterSelect);

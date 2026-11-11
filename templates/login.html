@@ -3,7 +3,7 @@
 {% block title %}Entrar{% endblock %}
 {% block content %}
 <div class="auth-brand">{{ icon('paw', 22) }}CastraMóvel</div>
-<form method="POST" class="card auth-card">
+<form method="POST" class="card auth-card"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <h1>Entrar</h1>
     <div class="form-grid">
         <div class="field full"><label for="usuario">Usuário</label><input type="text" id="usuario" name="usuario" autocomplete="username" required autofocus></div>

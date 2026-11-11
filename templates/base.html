@@ -34,7 +34,7 @@
         <div class="nav-user">
             <span class="nav-title">Conectado como {{ usuario_atual.nome }}</span>
             <a href="{{ url_for('alterar_senha') }}" class="nav-link{% if cur == 'alterar_senha' %} active{% endif %}">{{ icon('key') }}Alterar senha</a>
-            <form method="POST" action="{{ url_for('logout') }}"><button type="submit" class="nav-link">{{ icon('logout') }}Sair</button></form>
+            <form method="POST" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="nav-link">{{ icon('logout') }}Sair</button></form>
         </div>
     </aside>
     <div class="scrim" id="scrim"></div>
