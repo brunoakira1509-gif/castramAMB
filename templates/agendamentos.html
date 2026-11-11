@@ -24,7 +24,7 @@
                 <label for="animal_id">Animal</label>
                 <select name="animal_id" id="animal_id" required>
                     {% for animal in animais %}
-                        <option value="{{ animal.id }}">{{ animal.nome }} ({{ animal.raca }})</option>
+                        <option value="{{ animal.id }}">{{ animal.nome }} ({{ nome_especie(animal.especie) }}, {{ animal.raca }})</option>
                     {% endfor %}
                 </select>
             </div>

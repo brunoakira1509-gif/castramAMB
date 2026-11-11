@@ -6,8 +6,11 @@
     <div class="form-grid">
         <div class="field full">
             <label for="tutor-busca">Tutor</label>
-            <input type="search" id="tutor-busca" placeholder="Filtrar por nome ou CPF" data-filter-select="tutor_id" autocomplete="off">
-            <select name="tutor_id" id="tutor_id" size="5" required class="mt-8" aria-label="Lista de tutores">
+            <input type="search" id="tutor-busca" placeholder="Digite o nome ou CPF para buscar"
+                   data-filter-select="tutor_id" autocomplete="off" aria-controls="tutor_id">
+            <p class="hint">Busque e selecione o tutor na lista.</p>
+            <select name="tutor_id" id="tutor_id" required class="mt-8" aria-label="Tutor">
+                <option value="">Selecione um tutor</option>
                 {% for tutor in tutores %}
                     <option value="{{ tutor.id }}">{{ tutor.nome_completo }} - {{ tutor.cpf }}</option>
                 {% endfor %}
@@ -15,6 +18,14 @@
             {% if not tutores %}<p class="hint">Nenhum tutor cadastrado. <a href="{{ url_for('cadastrar_tutor') }}">Cadastrar tutor</a></p>{% endif %}
         </div>
         <div class="field"><label for="nome">Nome</label><input type="text" id="nome" name="nome" required></div>
+        <div class="field">
+            <label for="especie">Espécie</label>
+            <select name="especie" id="especie" required>
+                <option value="">Selecione uma espécie</option>
+                <option value="cao">Cão</option>
+                <option value="gato">Gato</option>
+            </select>
+        </div>
         <div class="field"><label for="raca">Raça</label><input type="text" id="raca" name="raca" required></div>
         <div class="field">
             <label for="sexo">Sexo</label>

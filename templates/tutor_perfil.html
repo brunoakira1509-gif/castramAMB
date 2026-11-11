@@ -21,7 +21,7 @@
         {% if tutor.animais %}
         <ul class="plain-list">
             {% for animal in tutor.animais %}
-            <li>{{ icon('paw') }}<a href="{{ url_for('editar_animal', id=animal.id) }}">{{ animal.nome }}</a><span class="muted">{{ animal.raca }}, {{ 'macho' if animal.sexo == 'macho' else 'fêmea' }}</span></li>
+            <li>{{ icon('paw') }}<a href="{{ url_for('editar_animal', id=animal.id) }}">{{ animal.nome }}</a><span class="muted">{{ nome_especie(animal.especie) }}, {{ animal.raca }}, {{ 'macho' if animal.sexo == 'macho' else 'fêmea' }}</span></li>
             {% endfor %}
         </ul>
         {% else %}<div class="empty"><p>Nenhum animal cadastrado.</p></div>{% endif %}

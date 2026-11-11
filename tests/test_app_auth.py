@@ -19,7 +19,7 @@ os.environ.update(
     SUPABASE_PUBLISHABLE_KEY='sb_publishable_test',
 )
 
-from app import AUTH, Usuario, app, db, hash_senha, ler_tutor, usuario_por_email
+from app import AUTH, Animal, Tutor, Usuario, app, db, hash_senha, ler_animal, ler_tutor, usuario_por_email
 from supabase_auth import EmailConfirmationRequired, InvalidCredentials
 
 
@@ -67,6 +67,58 @@ class AppAuthTests(unittest.TestCase):
         _, error = ler_tutor(fields)
 
         self.assertEqual(error, 'Informe os 11 dígitos do CPF.')
+
+    def test_animal_form_requires_a_supported_species(self):
+        fields = {
+            'nome': 'Mimi',
+            'especie': 'gato',
+            'raca': 'SRD',
+            'sexo': 'femea',
+            'microchip': '',
+        }
+
+        data, error = ler_animal(fields)
+
+        self.assertIsNone(error)
+        self.assertEqual(data['especie'], 'gato')
+        fields['especie'] = ''
+        _, error = ler_animal(fields)
+        self.assertIsNotNone(error)
+
+    def test_animal_species_and_searchable_tutor_picker_render(self):
+        user = Usuario(nome='ana', senha_hash=hash_senha('senha forte 123'))
+        tutor = Tutor(nome_completo='Maria de Souza', telefone='11999999999',
+                      endereco='Rua de teste', numero='1')
+        tutor.definir_cpf('12345678909')
+        db.session.add_all([user, tutor])
+        db.session.commit()
+        with self.client.session_transaction() as session:
+            session['usuario_id'] = user.id
+            session['csrf'] = 'test-csrf'
+
+        response = self.client.get('/cadastrar_animal')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'placeholder="Digite o nome ou CPF para buscar"', response.data)
+        self.assertIn(b'<option value="cao">C\xc3\xa3o</option>', response.data)
+        self.assertIn(b'<option value="gato">Gato</option>', response.data)
+        self.assertNotIn(b'size="5"', response.data)
+
+        response = self.client.post('/cadastrar_animal', data={
+            'csrf_token': 'test-csrf',
+            'tutor_id': str(tutor.id),
+            'nome': 'Mimi',
+            'especie': 'gato',
+            'raca': 'SRD',
+            'sexo': 'femea',
+            'microchip': '',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        animal = Animal.query.one()
+        self.assertEqual(animal.especie, 'gato')
+        response = self.client.get(f'/animal/{animal.id}')
+        self.assertIn(b'Esp\xc3\xa9cie: Gato', response.data)
 
     def test_empty_app_redirects_to_login(self):
         response = self.client.get('/')

@@ -56,6 +56,7 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 EXTENSOES = {'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'doc', 'docx', 'odt', 'xls', 'xlsx', 'txt'}
 EXIBIR_NO_NAVEGADOR = {'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp'}
+ESPECIES = {'cao': 'Cão', 'gato': 'Gato'}
 XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 
@@ -100,6 +101,7 @@ class Animal(db.Model):
     __tablename__ = 'animal'
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(enc('animal.nome'), nullable=False)
+    especie = db.Column(enc('animal.especie'), nullable=True)
     raca = db.Column(enc('animal.raca'), nullable=False)
     sexo = db.Column(enc('animal.sexo'), nullable=False)  # macho ou femea
     microchip = db.Column(enc('animal.microchip'), nullable=True)
@@ -182,12 +184,17 @@ def ler_tutor(form):
 
 
 def ler_animal(form):
-    campos = {c: form.get(c, '').strip() for c in ('nome', 'raca', 'sexo', 'microchip')}
-    if not (campos['nome'] and campos['raca']) or campos['sexo'] not in ('macho', 'femea'):
-        return campos, 'Preencha nome, raça e sexo.'
+    campos = {c: form.get(c, '').strip() for c in ('nome', 'especie', 'raca', 'sexo', 'microchip')}
+    if not campos['nome'] or campos['especie'] not in ESPECIES or not campos['raca'] \
+            or campos['sexo'] not in ('macho', 'femea'):
+        return campos, 'Preencha nome, espécie, raça e sexo.'
     if len(campos['nome']) > 50 or len(campos['raca']) > 50 or len(campos['microchip']) > 20:
         return campos, 'Algum campo ultrapassa o tamanho permitido.'
     return campos, None
+
+
+def nome_especie(especie):
+    return ESPECIES.get(especie, 'Não informada')
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +207,7 @@ def csrf_token():
 
 
 app.jinja_env.globals['csrf_token'] = csrf_token
+app.jinja_env.globals['nome_especie'] = nome_especie
 
 
 @app.before_request
@@ -564,7 +572,8 @@ def cadastrar_animal():
         if tutor is None:
             erro = 'Escolha um tutor.'
         if not erro:
-            animal = Animal(nome=dados['nome'], raca=dados['raca'], sexo=dados['sexo'], tutor_id=tutor.id)
+            animal = Animal(nome=dados['nome'], especie=dados['especie'], raca=dados['raca'],
+                            sexo=dados['sexo'], tutor_id=tutor.id)
             animal.definir_microchip(dados['microchip'])
             db.session.add(animal)
             try:
@@ -615,7 +624,8 @@ def tutor_perfil(id):
 def salvar_animal(animal):
     dados, erro = ler_animal(request.form)
     if not erro:
-        animal.nome, animal.raca, animal.sexo = dados['nome'], dados['raca'], dados['sexo']
+        animal.nome, animal.especie = dados['nome'], dados['especie']
+        animal.raca, animal.sexo = dados['raca'], dados['sexo']
         animal.definir_microchip(dados['microchip'])
         try:
             db.session.commit()
@@ -729,7 +739,7 @@ def gerar_excel_mes():
     for ag in agendamentos:
         por_dia[ag.data].append(ag)
 
-    colunas = ['Data', 'Hora', 'Animal', 'Raça', 'Sexo', 'Tutor', 'CPF Tutor']
+    colunas = ['Data', 'Hora', 'Animal', 'Espécie', 'Raça', 'Sexo', 'Tutor', 'CPF Tutor']
     arquivo = io.BytesIO()
     with pd.ExcelWriter(arquivo, engine='openpyxl') as writer:
         for dia in sorted(por_dia):
@@ -737,13 +747,14 @@ def gerar_excel_mes():
             linhas[0]['Data'] = dia.strftime('%d/%m/%Y')
             for a in por_dia[dia]:
                 linhas.append({'Data': dia.strftime('%d/%m/%Y'), 'Hora': str(a.hora),
-                               'Animal': seguro_excel(a.animal.nome), 'Raça': seguro_excel(a.animal.raca),
+                               'Animal': seguro_excel(a.animal.nome), 'Espécie': nome_especie(a.animal.especie),
+                               'Raça': seguro_excel(a.animal.raca),
                                'Sexo': a.animal.sexo, 'Tutor': seguro_excel(a.animal.tutor.nome_completo),
                                'CPF Tutor': seguro_excel(a.animal.tutor.cpf)})
             nome_aba = dia.strftime('%d-%m')
             pd.DataFrame(linhas).to_excel(writer, sheet_name=nome_aba, index=False)
             planilha = writer.sheets[nome_aba]
-            for linha in planilha.iter_rows(min_row=1, max_row=len(linhas), min_col=1, max_col=7):
+            for linha in planilha.iter_rows(min_row=1, max_row=len(linhas), min_col=1, max_col=8):
                 for celula in linha:
                     celula.border = BORDA
             margens(planilha)
@@ -760,7 +771,8 @@ def gerar_excel_dia():
         abort(400)
     agendamentos = (Agendamento.query.options(joinedload(Agendamento.animal).joinedload(Animal.tutor))
                     .filter_by(data=dia).order_by(Agendamento.hora).all())
-    linhas = [{'Hora': a.hora, 'Animal': seguro_excel(a.animal.nome), 'Raça': seguro_excel(a.animal.raca),
+    linhas = [{'Hora': a.hora, 'Animal': seguro_excel(a.animal.nome),
+               'Espécie': nome_especie(a.animal.especie), 'Raça': seguro_excel(a.animal.raca),
                'Sexo': a.animal.sexo, 'Tutor': seguro_excel(a.animal.tutor.nome_completo),
                'CPF Tutor': seguro_excel(a.animal.tutor.cpf)} for a in agendamentos]
     arquivo = io.BytesIO()
@@ -768,7 +780,7 @@ def gerar_excel_dia():
         pd.DataFrame(linhas).to_excel(writer, sheet_name='Agenda', index=False, startcol=1)
         planilha = writer.sheets['Agenda']
         margens(planilha)
-        for linha in planilha.iter_rows(min_row=1, max_row=len(linhas) + 1, min_col=2, max_col=7):
+        for linha in planilha.iter_rows(min_row=1, max_row=len(linhas) + 1, min_col=2, max_col=8):
             for celula in linha:
                 celula.border = BORDA
     arquivo.seek(0)

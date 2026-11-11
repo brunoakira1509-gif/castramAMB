@@ -20,7 +20,7 @@
                 <tr>
                     <td>{{ ag.data.strftime('%d/%m/%Y') }}</td>
                     <td>{{ ag.hora.strftime('%H:%M') }}</td>
-                    <td><a href="{{ url_for('animal_perfil', id=ag.animal.id) }}">{{ ag.animal.nome }}</a></td>
+                    <td><a href="{{ url_for('animal_perfil', id=ag.animal.id) }}">{{ ag.animal.nome }}</a> <span class="muted">({{ nome_especie(ag.animal.especie) }})</span></td>
                     <td><a href="{{ url_for('tutor_perfil', id=ag.animal.tutor.id) }}">{{ ag.animal.tutor.nome_completo }}</a></td>
                 </tr>
             {% endfor %}

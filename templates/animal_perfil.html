@@ -6,12 +6,21 @@
 <div class="page-head">
     <div>
         <h1>{{ animal.nome }}</h1>
+        <p class="muted">Espécie: {{ nome_especie(animal.especie) }}</p>
         <p class="muted">Tutor: <a href="{{ url_for('tutor_perfil', id=animal.tutor_id) }}">{{ animal.tutor.nome_completo }}</a></p>
     </div>
 </div>
 <form method="POST" class="card"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
         <div class="field"><label for="nome">Nome</label><input type="text" id="nome" name="nome" value="{{ animal.nome }}" required></div>
+        <div class="field">
+            <label for="especie">Espécie</label>
+            <select name="especie" id="especie" required>
+                <option value="">Selecione uma espécie</option>
+                <option value="cao" {% if animal.especie == 'cao' %}selected{% endif %}>Cão</option>
+                <option value="gato" {% if animal.especie == 'gato' %}selected{% endif %}>Gato</option>
+            </select>
+        </div>
         <div class="field"><label for="raca">Raça</label><input type="text" id="raca" name="raca" value="{{ animal.raca }}" required></div>
         <div class="field">
             <label for="sexo">Sexo</label>

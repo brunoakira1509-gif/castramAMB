@@ -15,11 +15,12 @@
 {% if animais %}
 <div class="card flush table-wrap">
     <table class="table">
-        <thead><tr><th>Nome</th><th>Raça</th><th>Sexo</th><th>Microchip</th><th>Tutor</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Espécie</th><th>Raça</th><th>Sexo</th><th>Microchip</th><th>Tutor</th></tr></thead>
         <tbody>
         {% for animal in animais %}
             <tr>
                 <td><a href="{{ url_for('animal_perfil', id=animal.id) }}">{{ animal.nome }}</a></td>
+                <td>{{ nome_especie(animal.especie) }}</td>
                 <td>{{ animal.raca }}</td>
                 <td>{{ 'Macho' if animal.sexo == 'macho' else 'Fêmea' }}</td>
                 <td>{% if animal.microchip %}{{ animal.microchip }}{% else %}<span class="muted">Sem microchip</span>{% endif %}</td>

@@ -39,7 +39,10 @@ def main():
         db.session.flush()
 
         for r in origem.execute('select * from animal'):
-            a = Animal(id=r['id'], nome=r['nome'], raca=r['raca'], sexo=r['sexo'], tutor_id=r['tutor_id'])
+            colunas = r.keys()
+            especie = r['especie'] if 'especie' in colunas else None
+            a = Animal(id=r['id'], nome=r['nome'], especie=especie, raca=r['raca'],
+                       sexo=r['sexo'], tutor_id=r['tutor_id'])
             a.definir_microchip(r['microchip'])
             db.session.add(a)
         db.session.flush()

@@ -21,7 +21,8 @@ Este é um sistema web para organizar o serviço móvel de castração de animai
 1. Instale as dependências: `pip install -r requirements.txt`
 2. Crie o `.env` com as chaves: `python gerar_chaves.py`. Preencha `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY` com os dados do projeto (Project Settings > API Keys).
 3. No Supabase: **SQL Editor > New query**, cole o conteúdo de `supabase_schema.sql` e clique em **Run**
-   (cria as tabelas e trava o acesso pelas chaves públicas). Confira que todas as linhas mostram `rls_ativo = true`.
+   (cria/atualiza as tabelas e trava o acesso pelas chaves públicas). Se já executou uma versão anterior, rode novamente
+   para acrescentar a coluna de espécie sem apagar os dados. Confira que todas as linhas mostram `rls_ativo = true`.
 4. No Supabase: botão **Connect** > **Direct** > método **Transaction pooler** > formato **URI**. Troque `[YOUR-PASSWORD]`
    pela senha do banco e cole em `DATABASE_URL` no `.env`.
 5. Tinha dados no sistema antigo (SQLite)? Rode `python migrar_sqlite.py`. Depois de conferir, apague
