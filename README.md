@@ -19,15 +19,18 @@ Este é um sistema web para organizar o serviço móvel de castração de animai
 ## Instalação
 
 1. Instale as dependências: `pip install -r requirements.txt`
-2. Crie o `.env` com as chaves: `python gerar_chaves.py`, e preencha no `.env` os dados de SMTP (o e-mail que envia o código de login; no Gmail use uma "senha de app")
+2. Crie o `.env` com as chaves: `python gerar_chaves.py`. Preencha `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY` com os dados do projeto (Project Settings > API Keys).
+   No Supabase, desative a confirmação de e-mail em Authentication > Sign In / Providers > Email; assim o login por e-mail e senha não depende de um provedor SMTP.
 3. No Supabase: **SQL Editor > New query**, cole o conteúdo de `supabase_schema.sql` e clique em **Run**
    (cria as tabelas e trava o acesso pelas chaves públicas). Confira que todas as linhas mostram `rls_ativo = true`.
-4. No Supabase: botão **Connect** > **Session pooler**, copie a string de conexão, troque `[YOUR-PASSWORD]`
+4. No Supabase: botão **Connect** > **Direct** > método **Transaction pooler** > formato **URI**. Troque `[YOUR-PASSWORD]`
    pela senha do banco e cole em `DATABASE_URL` no `.env`.
 5. Tinha dados no sistema antigo (SQLite)? Rode `python migrar_sqlite.py`. Depois de conferir, apague
    `instance/castramovel.db` e `instance/uploads` antigos (estão em texto claro).
 6. Inicie (`iniciar_servidor.bat` ou `python serve.py`) e acesse http://localhost:5000/ . Se não houver usuários,
    o sistema pede para criar o primeiro: faça isso logo após subir o servidor.
+
+No Vercel, configure também `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL` e as quatro chaves `CASTRAMOVEL_*` no ambiente Production. Não são necessárias variáveis `SMTP_*`.
 
 ## Segurança
 
@@ -35,13 +38,12 @@ Este é um sistema web para organizar o serviço móvel de castração de animai
 - **Dados criptografados** (AES-256-GCM) antes de ir ao banco: nome, telefone, CPF, endereço, número do tutor; nome, raça, sexo e microchip do animal; nome dos documentos. Os arquivos anexados também são cifrados no disco.
   Ficam em claro apenas ids, data/hora dos agendamentos e o nome de login.
 - **Relatórios Excel**: o servidor descriptografa em memória só para montar a planilha; nada em claro vai para o disco.
-- **Verificação por e-mail**: depois da senha, um código de 6 dígitos (válido por 10 min, uso único, 5 tentativas) é enviado ao e-mail do usuário. Só o hash do código é guardado.
-- **Senhas**: scrypt com salt individual + pepper secreto do `.env`. Mínimo de 10 caracteres.
+- **Autenticação**: Supabase Auth valida e-mail e senha. A confirmação de e-mail fica desativada para não exigir SMTP; portanto, não há código por e-mail nem recuperação de senha por e-mail.
+- **Senhas**: gerenciadas pelo Supabase Auth. Usuários existentes migram no primeiro login válido; a senha atual é validada pelo hash legado e registrada no Auth.
 - **Injection**: todas as consultas são parametrizadas (SQLAlchemy), entradas são validadas, o HTML é escapado e as planilhas
   neutralizam fórmulas (`=`, `+`, `-`, `@`).
 - **Navegador**: proteção CSRF, cookie HttpOnly, política CSP (bloqueia script/estilo injetado), cabeçalhos de segurança, sem cache.
-- **Supabase**: RLS ligado e sem policies. As chaves públicas (publishable/anon) não leem nem gravam nada.
-  O app conecta direto no Postgres com a senha do banco.
+- **Supabase**: RLS ligado e sem policies nas tabelas do app. A chave publishable/anon só é usada pelo servidor para o endpoint de autenticação; os dados são acessados pelo app via PostgreSQL.
 - **Guarde o `.env` em local seguro.** Sem `CASTRAMOVEL_DATA_KEY` os dados do banco não podem ser recuperados (nem por nós, nem pelo Supabase).
 - Se o sistema for acessado por HTTPS, coloque `CASTRAMOVEL_HTTPS=1` no `.env`.
 
@@ -56,8 +58,10 @@ Este é um sistema web para organizar o serviço móvel de castração de animai
 
 ## Usuários
 
-- Alterar a própria senha (mínimo de 10 caracteres): menu lateral, "Alterar senha".
-- Criar outros usuários, trocar o e-mail ou redefinir senha (`python usuarios.py email NOME`): `python usuarios.py criar NOME`, `python usuarios.py senha NOME`, `python usuarios.py listar`, `python usuarios.py remover NOME`.
+- Entrar usando o e-mail e a senha cadastrados; a senha precisa ter no mínimo 10 caracteres.
+- Alterar a própria senha: menu lateral, "Alterar senha". Sem SMTP, não há recuperação por e-mail.
+- Criar usuários: `python usuarios.py criar NOME`. Trocar o e-mail: `python usuarios.py email NOME`. Alterar a senha pelo terminal exige a senha atual: `python usuarios.py senha NOME`.
+- Listar ou remover usuários: `python usuarios.py listar` e `python usuarios.py remover NOME`.
 
 ## Estrutura do Projeto
 

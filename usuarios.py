@@ -1,30 +1,35 @@
-"""Gerencia usuários pelo terminal.
-
-  python usuarios.py listar
-  python usuarios.py criar NOME
-  python usuarios.py email NOME      (define/troca o e-mail que recebe o código de login)
-  python usuarios.py senha NOME      (redefine a senha)
-  python usuarios.py remover NOME
-"""
+"""Gerencia usuários pelo terminal."""
 import getpass
 import sys
 
-from app import SENHA_MIN, Usuario, app, db, email_valido, mascarar_email
+from app import (SENHA_MIN, Usuario, app, atualizar_email_usuario, atualizar_senha_usuario,
+                 criar_ou_entrar_no_supabase, db, email_valido, mascarar_email, mensagem_de_erro_auth,
+                 usuario_por_email, validar_senha)
+from sqlalchemy.exc import IntegrityError
 from seguranca import hash_senha
+from supabase_auth import SupabaseAuthError
 
 
 def pedir_senha():
     senha = getpass.getpass(f'Senha (mínimo {SENHA_MIN} caracteres): ')
-    if len(senha) < SENHA_MIN or senha != getpass.getpass('Repita a senha: '):
-        sys.exit('Senha curta demais ou diferente da confirmação.')
-    return hash_senha(senha)
+    erro = validar_senha(senha, getpass.getpass('Repita a senha: '))
+    if erro:
+        sys.exit(erro)
+    return senha
 
 
 def pedir_email():
-    email = input('E-mail para receber o código de login: ').strip()
+    email = input('E-mail de acesso: ').strip().lower()
     if not email_valido(email):
         sys.exit('E-mail inválido.')
     return email
+
+
+def autenticar_nova_conta(email, senha):
+    try:
+        criar_ou_entrar_no_supabase(email, senha)
+    except SupabaseAuthError as exc:
+        sys.exit(mensagem_de_erro_auth(exc))
 
 
 def main():
@@ -43,19 +48,43 @@ def main():
         if comando == 'criar':
             if usuario:
                 sys.exit('Esse usuário já existe.')
-            novo = Usuario(nome=nome, senha_hash=pedir_senha())
-            novo.definir_email(pedir_email())
+            senha = pedir_senha()
+            email = pedir_email()
+            if usuario_por_email(email):
+                sys.exit('Esse e-mail já está associado a um usuário.')
+            autenticar_nova_conta(email, senha)
+            novo = Usuario(nome=nome, senha_hash=hash_senha(senha))
+            novo.definir_email(email)
             db.session.add(novo)
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                sys.exit('Não foi possível criar o usuário. Confira se o nome já está em uso.')
+            print('Pronto.')
+            return
         elif not usuario:
             sys.exit('Usuário não encontrado.')
         elif comando == 'senha':
-            usuario.senha_hash = pedir_senha()
+            atual = getpass.getpass('Senha atual: ')
+            nova = pedir_senha()
+            try:
+                atualizar_senha_usuario(usuario, atual, nova)
+            except SupabaseAuthError as exc:
+                sys.exit(mensagem_de_erro_auth(exc))
+            print('Pronto.')
+            return
         elif comando == 'email':
-            usuario.definir_email(pedir_email())
+            try:
+                atualizar_email_usuario(usuario, pedir_email())
+            except SupabaseAuthError as exc:
+                sys.exit(mensagem_de_erro_auth(exc))
         else:
             db.session.delete(usuario)
         db.session.commit()
         print('Pronto.')
+        if comando == 'remover':
+            print('A conta no Supabase Auth permanece; sem o usuário local, ela não acessa o sistema.')
 
 
 if __name__ == '__main__':

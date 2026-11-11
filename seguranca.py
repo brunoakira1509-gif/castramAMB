@@ -10,7 +10,6 @@ import base64
 import hashlib
 import hmac
 import os
-import secrets
 import unicodedata
 
 from cryptography.exceptions import InvalidTag
@@ -153,17 +152,3 @@ def verificar_senha(senha, hash_guardado):
     if check_password_hash(hash_guardado, senha):  # hash antigo, de antes do pepper
         return True, True
     return False, False
-
-
-# ---------- Código de verificação por e-mail ----------
-def gerar_codigo():
-    return f'{secrets.randbelow(10 ** 6):06d}'
-
-
-def hash_codigo(token, codigo):
-    """O código nunca é guardado: só o HMAC dele, amarrado ao token daquela tentativa de login."""
-    return indice_cego(f'{token}\x00{codigo}', 'verificacao_login')
-
-
-def codigo_confere(token, codigo, hash_guardado):
-    return hmac.compare_digest(hash_codigo(token, codigo) or '', hash_guardado)

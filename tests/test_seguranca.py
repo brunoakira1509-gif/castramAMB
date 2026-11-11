@@ -76,26 +76,5 @@ class T(unittest.TestCase):
         self.assertFalse(__import__('werkzeug.security', fromlist=['x']).check_password_hash(h, 'abc12345678'))
 
 
-class TCodigo(unittest.TestCase):
-    def test_codigo_formato(self):
-        for _ in range(200):
-            c = s.gerar_codigo(); self.assertRegex(c, r'^\d{6}$')
-
-    def test_codigo_confere_e_nao_guarda_em_claro(self):
-        h = s.hash_codigo('tokenA', '123456')
-        self.assertNotIn('123456', h)
-        self.assertTrue(s.codigo_confere('tokenA', '123456', h))
-        self.assertFalse(s.codigo_confere('tokenA', '123457', h))
-        self.assertFalse(s.codigo_confere('tokenB', '123456', h))   # amarrado ao token do login
-        self.assertFalse(s.codigo_confere('tokenA', '', h))
-
-    def test_mensagem_email(self):
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        import email_envio as e
-        m = e.montar_mensagem('ana@x.com', '042913', 10, 'CastraMóvel <no@x.com>')
-        self.assertIn('042913', m['Subject']); self.assertIn('042913', m.get_content())
-        self.assertEqual(m['To'], 'ana@x.com')
-        with self.assertRaises(ValueError): e.montar_mensagem('a@x.com\nBcc: v@y.com', '1', 1, 'x@y.com')
-
-
-unittest.main(verbosity=2)
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

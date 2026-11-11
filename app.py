@@ -7,23 +7,23 @@ import secrets
 import tempfile
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 from flask import (Flask, abort, flash, g, redirect, render_template, request, send_file,
                    session, url_for)
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl.styles import Border, Side
-from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from werkzeug.exceptions import HTTPException
 
 from config import BASE_DIR, USAR_HTTPS, segredo, url_do_banco
-from email_envio import enviar_codigo, validar_config as validar_smtp
-from seguranca import (SENHA_MAX, TextoCriptografado, cifrar_bytes, codigo_confere, decifrar_bytes,
-                       gerar_codigo, hash_codigo, hash_senha, indice_cego, normalizar, validar_chaves,
-                       verificar_senha)
+from seguranca import (SENHA_MAX, TextoCriptografado, cifrar_bytes, decifrar_bytes, hash_senha,
+                       indice_cego, normalizar, validar_chaves, verificar_senha)
+from supabase_auth import (AccountAlreadyExists, AuthUnavailable, EmailConfirmationRequired,
+                           InvalidCredentials, SupabaseAuth,
+                           SupabaseAuthError)
 
 INSTANCE_DIR = os.path.join(BASE_DIR, 'instance')
 if os.environ.get('VERCEL'):
@@ -33,7 +33,7 @@ app = Flask(__name__, instance_path=INSTANCE_DIR)
 os.makedirs(app.instance_path, exist_ok=True)
 
 validar_chaves()  # falha logo na partida se faltar alguma chave no .env
-validar_smtp()    # e se o e-mail (SMTP) não estiver configurado
+AUTH = SupabaseAuth()
 
 URL_BANCO = url_do_banco()
 opcoes_motor = {'pool_pre_ping': True, 'pool_recycle': 280}
@@ -73,22 +73,10 @@ class Usuario(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(50), unique=True, nullable=False)
     senha_hash = db.Column(db.String(255), nullable=False)
-    email = db.Column(enc('usuario.email'), nullable=True)  # recebe o código de verificação do login
+    email = db.Column(enc('usuario.email'), nullable=True)
 
     def definir_email(self, email):
         self.email = email.strip().lower()
-
-
-class VerificacaoLogin(db.Model):
-    """Tentativa de login esperando o código do e-mail. Guarda só o hash do código."""
-    __tablename__ = 'verificacao_login'
-    id = db.Column(db.Integer, primary_key=True)
-    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
-    token = db.Column(db.String(64), unique=True, nullable=False)  # fica na sessão do navegador
-    codigo_hash = db.Column(db.String(64), nullable=False)
-    tentativas = db.Column(db.Integer, nullable=False, default=0)
-    criado_em = db.Column(db.DateTime, nullable=False)
-    expira_em = db.Column(db.DateTime, nullable=False)
 
 
 class Tutor(db.Model):
@@ -170,6 +158,14 @@ def email_valido(email):
     if not email or len(email) > 254 or any(c in email for c in '<>"\'(),;:\\'):
         return False
     return re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email) is not None
+
+
+def usuario_por_email(email):
+    procurado = email.strip().casefold()
+    for usuario in Usuario.query.filter(Usuario.email.isnot(None)).all():
+        if hmac.compare_digest(usuario.email.casefold(), procurado):
+            return usuario
+    return None
 
 
 def mascarar_email(email):
@@ -273,7 +269,7 @@ def exigir_login():
         return None if endpoint == 'primeiro_acesso' else redirect(url_for('primeiro_acesso'))
     if endpoint == 'primeiro_acesso':
         return redirect(url_for('login'))
-    if endpoint not in ('login', 'verificar', 'reenviar_codigo'):
+    if endpoint != 'login':
         session.clear()
         return redirect(url_for('login', proximo=request.path if request.method == 'GET' else None))
     return None
@@ -329,45 +325,64 @@ def tratar_erro(erro):
 # ---------------------------------------------------------------------------
 # Login e senha
 # ---------------------------------------------------------------------------
-EXPIRA_CODIGO = timedelta(minutes=10)
-MAX_TENTATIVAS_CODIGO = 5
-INTERVALO_REENVIO = timedelta(seconds=60)
+def criar_ou_entrar_no_supabase(email, senha):
+    return AUTH.sign_up_or_sign_in(email, senha)
 
 
-def agora():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def iniciar_verificacao(usuario):
-    """Gera o código, guarda só o hash e envia por e-mail. O login só termina em /verificar."""
-    VerificacaoLogin.query.filter(or_(VerificacaoLogin.usuario_id == usuario.id,
-                                      VerificacaoLogin.expira_em < agora())).delete(synchronize_session=False)
-    codigo, token = gerar_codigo(), secrets.token_urlsafe(32)
-    verificacao = VerificacaoLogin(usuario_id=usuario.id, token=token, codigo_hash=hash_codigo(token, codigo),
-                                   criado_em=agora(), expira_em=agora() + EXPIRA_CODIGO)
-    db.session.add(verificacao)
-    db.session.commit()
+def autenticar_usuario(email, senha):
     try:
-        enviar_codigo(usuario.email, codigo, int(EXPIRA_CODIGO.total_seconds() // 60))
-    except Exception:  # noqa: BLE001
-        app.logger.exception('Falha ao enviar o e-mail de verificação')
-        db.session.delete(verificacao)
-        db.session.commit()
-        flash('Não foi possível enviar o e-mail agora. Tente de novo em instantes ou avise o responsável.', 'error')
-        return False
-    session.clear()
-    session['verif'] = token
-    return True
+        AUTH.sign_in(email, senha)
+    except InvalidCredentials:
+        usuario = usuario_por_email(email)
+        ok, atualizar = verificar_senha(senha, usuario.senha_hash if usuario else None)
+        if not usuario or not ok:
+            raise
+        criar_ou_entrar_no_supabase(email, senha)
+        if atualizar:
+            usuario.senha_hash = hash_senha(senha)
+            db.session.commit()
+        return usuario
+
+    usuario = usuario_por_email(email)
+    if not usuario:
+        raise InvalidCredentials('E-mail ou senha incorretos.')
+    return usuario
 
 
-def desafio_atual():
-    token = session.get('verif')
-    verificacao = VerificacaoLogin.query.filter_by(token=token).first() if token else None
-    if verificacao and verificacao.expira_em < agora():
-        db.session.delete(verificacao)
-        db.session.commit()
-        return None
-    return verificacao
+def atualizar_senha_usuario(usuario, senha_atual, nova_senha):
+    if not usuario.email:
+        raise InvalidCredentials('Cadastre um e-mail para a conta antes de alterar a senha.')
+    try:
+        sessao_auth = AUTH.sign_in(usuario.email, senha_atual)
+    except InvalidCredentials:
+        ok, _ = verificar_senha(senha_atual, usuario.senha_hash)
+        if not ok:
+            raise
+        criar_ou_entrar_no_supabase(usuario.email, nova_senha)
+    else:
+        AUTH.update_password(sessao_auth['access_token'], nova_senha)
+    usuario.senha_hash = hash_senha(nova_senha)
+    db.session.commit()
+
+
+def atualizar_email_usuario(usuario, novo_email):
+    existente = usuario_por_email(novo_email)
+    if existente and existente.id != usuario.id:
+        raise AccountAlreadyExists('Este e-mail já está associado a outro usuário.')
+    if usuario.email and usuario.email.casefold() == novo_email.casefold():
+        return
+    usuario.definir_email(novo_email)
+    db.session.commit()
+
+
+def mensagem_de_erro_auth(erro):
+    if isinstance(erro, EmailConfirmationRequired):
+        return 'Desative a confirmação de e-mail em Authentication > Sign In / Providers > Email no Supabase.'
+    if isinstance(erro, AuthUnavailable):
+        return 'Não foi possível conectar à autenticação do Supabase. Tente novamente.'
+    if isinstance(erro, AccountAlreadyExists):
+        return 'Já existe uma conta Supabase Auth com este e-mail.'
+    return 'Não foi possível concluir a autenticação. Confira a configuração do Supabase.'
 
 
 @app.route('/primeiro_acesso', methods=['GET', 'POST'])
@@ -377,18 +392,34 @@ def primeiro_acesso():
         email = request.form.get('email', '').strip()
         erro = None if nome and len(nome) <= 50 else 'Informe um nome de usuário (até 50 caracteres).'
         erro = erro or (None if email_valido(email) else 'Informe um e-mail válido.')
-        erro = erro or validar_senha(request.form.get('senha', ''), request.form.get('confirmacao', ''))
+        senha = request.form.get('senha', '')
+        erro = erro or validar_senha(senha, request.form.get('confirmacao', ''))
         if erro:
             flash(erro, 'error')
         else:
-            usuario = Usuario(nome=nome, senha_hash=hash_senha(request.form['senha']))
+            if usuario_por_email(email):
+                flash('Este e-mail já está associado a um usuário do sistema.', 'error')
+                return render_template('primeiro_acesso.html')
+            try:
+                criar_ou_entrar_no_supabase(email, senha)
+            except SupabaseAuthError as exc:
+                app.logger.warning('Criação da conta Supabase falhou: %s', exc)
+                flash(mensagem_de_erro_auth(exc), 'error')
+                status = 503 if isinstance(exc, AuthUnavailable) else 200
+                return render_template('primeiro_acesso.html'), status
+            usuario = Usuario(nome=nome, senha_hash=hash_senha(senha))
             usuario.definir_email(email)
             db.session.add(usuario)
-            db.session.commit()
-            if iniciar_verificacao(usuario):  # confirma que o e-mail funciona antes de liberar o acesso
-                flash(f'Usuário criado. Enviamos um código para {mascarar_email(usuario.email)}.', 'success')
-                return redirect(url_for('verificar'))
-            return redirect(url_for('login'))
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash('Não foi possível criar o usuário. Confira se o nome já está em uso.', 'error')
+                return render_template('primeiro_acesso.html')
+            session.clear()
+            session['usuario_id'] = usuario.id
+            session.permanent = True
+            return redirect(url_for('index'))
     return render_template('primeiro_acesso.html')
 
 
@@ -401,80 +432,32 @@ def login():
         if bloqueado(ip):
             flash('Muitas tentativas. Aguarde alguns minutos e tente de novo.', 'error')
             return render_template('login.html'), 429
-        nome = request.form.get('usuario', '').strip().lower()
+        email = request.form.get('email', '').strip().lower()
         senha = request.form.get('senha', '')
-        usuario = Usuario.query.filter_by(nome=nome).first()
-        ok, atualizar = verificar_senha(senha, usuario.senha_hash if usuario else None)
-        if usuario and ok:
-            if atualizar:  # hash antigo (sem pepper) é regravado no formato novo
-                usuario.senha_hash = hash_senha(senha)
-                db.session.commit()
-            FALHAS.pop(ip, None)
-            if bloqueado(f'cod:{usuario.id}'):
-                flash('Muitos códigos incorretos para este usuário. Aguarde alguns minutos.', 'error')
-                return render_template('login.html'), 429
-            if not usuario.email:
-                flash('Este usuário não tem e-mail cadastrado. Peça ao responsável: '
-                      'python usuarios.py email NOME', 'error')
-                return render_template('login.html')
-            if iniciar_verificacao(usuario):
-                flash(f'Enviamos um código de 6 dígitos para {mascarar_email(usuario.email)}.', 'success')
-                return redirect(url_for('verificar'))
+        if not email_valido(email):
+            flash('Informe um e-mail válido.', 'error')
             return render_template('login.html')
-        registrar_falha(ip)
-        flash('Usuário ou senha incorretos.', 'error')
+        if len(senha) > SENHA_MAX:
+            registrar_falha(ip)
+            flash('E-mail ou senha incorretos.', 'error')
+            return render_template('login.html')
+        try:
+            usuario = autenticar_usuario(email, senha)
+        except InvalidCredentials:
+            registrar_falha(ip)
+            flash('E-mail ou senha incorretos.', 'error')
+            return render_template('login.html')
+        except SupabaseAuthError as exc:
+            app.logger.warning('Autenticação Supabase falhou: %s', exc)
+            flash(mensagem_de_erro_auth(exc), 'error')
+            status = 503 if isinstance(exc, AuthUnavailable) else 200
+            return render_template('login.html'), status
+        FALHAS.pop(ip, None)
+        session.clear()
+        session['usuario_id'] = usuario.id
+        session.permanent = True
+        return redirect(destino_seguro(request.args.get('proximo')))
     return render_template('login.html')
-
-
-@app.route('/verificar', methods=['GET', 'POST'])
-def verificar():
-    if g.usuario:
-        return redirect(url_for('index'))
-    verificacao = desafio_atual()
-    if verificacao is None:
-        flash('A verificação expirou. Entre novamente.', 'error')
-        return redirect(url_for('login'))
-    usuario = db.session.get(Usuario, verificacao.usuario_id)
-    if request.method == 'POST':
-        chave = f'cod:{usuario.id}'
-        if bloqueado(chave):
-            flash('Muitos códigos incorretos. Aguarde alguns minutos.', 'error')
-            return render_template('verificar.html', email=mascarar_email(usuario.email)), 429
-        codigo = re.sub(r'\D', '', request.form.get('codigo', ''))
-        if codigo_confere(verificacao.token, codigo, verificacao.codigo_hash):
-            db.session.delete(verificacao)
-            db.session.commit()
-            FALHAS.pop(chave, None)
-            session.clear()
-            session['usuario_id'] = usuario.id
-            session.permanent = True
-            return redirect(destino_seguro(request.args.get('proximo')))
-        registrar_falha(chave)
-        verificacao.tentativas += 1
-        if verificacao.tentativas >= MAX_TENTATIVAS_CODIGO:
-            db.session.delete(verificacao)
-            db.session.commit()
-            session.clear()
-            flash('Muitas tentativas com código incorreto. Entre novamente.', 'error')
-            return redirect(url_for('login'))
-        db.session.commit()
-        flash('Código incorreto.', 'error')
-    return render_template('verificar.html', email=mascarar_email(usuario.email))
-
-
-@app.route('/reenviar_codigo', methods=['POST'])
-def reenviar_codigo():
-    verificacao = desafio_atual()
-    if verificacao is None:
-        return redirect(url_for('login'))
-    if agora() - verificacao.criado_em < INTERVALO_REENVIO:
-        flash('Aguarde um minuto para pedir outro código.', 'error')
-        return redirect(url_for('verificar'))
-    usuario = db.session.get(Usuario, verificacao.usuario_id)
-    if iniciar_verificacao(usuario):
-        flash('Enviamos um novo código.', 'success')
-        return redirect(url_for('verificar'))
-    return redirect(url_for('login'))
 
 
 @app.route('/logout', methods=['POST'])
@@ -486,16 +469,20 @@ def logout():
 @app.route('/alterar_senha', methods=['GET', 'POST'])
 def alterar_senha():
     if request.method == 'POST':
-        ok, _ = verificar_senha(request.form.get('atual', ''), g.usuario.senha_hash)
-        if not ok:
-            flash('A senha atual está incorreta.', 'error')
+        atual = request.form.get('atual', '')
+        nova = request.form.get('senha', '')
+        erro = validar_senha(nova, request.form.get('confirmacao', ''))
+        if erro:
+            flash(erro, 'error')
         else:
-            erro = validar_senha(request.form.get('senha', ''), request.form.get('confirmacao', ''))
-            if erro:
-                flash(erro, 'error')
+            try:
+                atualizar_senha_usuario(g.usuario, atual, nova)
+            except InvalidCredentials:
+                flash('A senha atual está incorreta.', 'error')
+            except SupabaseAuthError as exc:
+                app.logger.warning('Alteração de senha Supabase falhou: %s', exc)
+                flash(mensagem_de_erro_auth(exc), 'error')
             else:
-                g.usuario.senha_hash = hash_senha(request.form['senha'])
-                db.session.commit()
                 flash('Senha alterada.', 'success')
                 return redirect(url_for('index'))
     return render_template('alterar_senha.html')
