@@ -20,17 +20,18 @@ Este é um sistema web para organizar o serviço móvel de castração de animai
 
 1. Instale as dependências: `pip install -r requirements.txt`
 2. Crie o `.env` com as chaves: `python gerar_chaves.py`. Preencha `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY` com os dados do projeto (Project Settings > API Keys).
-   No Supabase, desative a confirmação de e-mail em Authentication > Sign In / Providers > Email; assim o login por e-mail e senha não depende de um provedor SMTP.
 3. No Supabase: **SQL Editor > New query**, cole o conteúdo de `supabase_schema.sql` e clique em **Run**
    (cria as tabelas e trava o acesso pelas chaves públicas). Confira que todas as linhas mostram `rls_ativo = true`.
 4. No Supabase: botão **Connect** > **Direct** > método **Transaction pooler** > formato **URI**. Troque `[YOUR-PASSWORD]`
    pela senha do banco e cole em `DATABASE_URL` no `.env`.
 5. Tinha dados no sistema antigo (SQLite)? Rode `python migrar_sqlite.py`. Depois de conferir, apague
    `instance/castramovel.db` e `instance/uploads` antigos (estão em texto claro).
-6. Inicie (`iniciar_servidor.bat` ou `python serve.py`) e acesse http://localhost:5000/ . Se não houver usuários,
-   o sistema pede para criar o primeiro: faça isso logo após subir o servidor.
+6. Crie e confirme as contas em **Supabase > Authentication > Users**. Inicie (`iniciar_servidor.bat` ou `python serve.py`)
+   e acesse http://localhost:5000/ para entrar. O app cria o perfil local após o primeiro login confirmado.
+   Se apenas administradores devem criar contas, desative o cadastro público nas configurações de Auth.
 
-No Vercel, configure também `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL` e as quatro chaves `CASTRAMOVEL_*` no ambiente Production. Não são necessárias variáveis `SMTP_*`.
+Configure o envio de e-mail no Supabase Auth se quiser que links de confirmação sejam enviados para usuários fora da equipe do projeto.
+No Vercel, configure também `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL` e as quatro chaves `CASTRAMOVEL_*` no ambiente Production. Não são necessárias variáveis `SMTP_*` no Vercel.
 
 ## Segurança
 
@@ -38,7 +39,7 @@ No Vercel, configure também `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `DATABA
 - **Dados criptografados** (AES-256-GCM) antes de ir ao banco: nome, telefone, CPF, endereço, número do tutor; nome, raça, sexo e microchip do animal; nome dos documentos. Os arquivos anexados também são cifrados no disco.
   Ficam em claro apenas ids, data/hora dos agendamentos e o nome de login.
 - **Relatórios Excel**: o servidor descriptografa em memória só para montar a planilha; nada em claro vai para o disco.
-- **Autenticação**: Supabase Auth valida e-mail e senha. A confirmação de e-mail fica desativada para não exigir SMTP; portanto, não há código por e-mail nem recuperação de senha por e-mail.
+- **Autenticação**: Supabase Auth valida e-mail e senha; usuários precisam confirmar o e-mail antes de entrar, conforme a configuração do projeto. O app só apresenta a tela de login; os usuários são gerenciados no Supabase.
 - **Senhas**: gerenciadas pelo Supabase Auth. Usuários existentes migram no primeiro login válido; a senha atual é validada pelo hash legado e registrada no Auth.
 - **Injection**: todas as consultas são parametrizadas (SQLAlchemy), entradas são validadas, o HTML é escapado e as planilhas
   neutralizam fórmulas (`=`, `+`, `-`, `@`).

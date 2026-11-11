@@ -44,7 +44,7 @@ class SupabaseAuthTests(unittest.TestCase):
             self.auth.sign_in('ana@example.com', 'wrong')
 
     @patch('supabase_auth.urlopen')
-    def test_sign_up_requires_email_confirmation_to_be_disabled(self, urlopen):
+    def test_sign_up_without_session_requires_email_confirmation(self, urlopen):
         urlopen.return_value.__enter__.return_value.read.return_value = json.dumps({
             'user': {'email': 'ana@example.com'},
         }).encode()

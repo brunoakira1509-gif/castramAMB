@@ -263,12 +263,7 @@ def exigir_login():
         return None
     g.usuario = db.session.get(Usuario, session['usuario_id']) if session.get('usuario_id') else None
     if g.usuario:
-        return redirect(url_for('index')) if endpoint == 'primeiro_acesso' else None
-    sem_usuarios = Usuario.query.count() == 0
-    if sem_usuarios:
-        return None if endpoint == 'primeiro_acesso' else redirect(url_for('primeiro_acesso'))
-    if endpoint == 'primeiro_acesso':
-        return redirect(url_for('login'))
+        return redirect(url_for('index')) if endpoint == 'login' else None
     if endpoint != 'login':
         session.clear()
         return redirect(url_for('login', proximo=request.path if request.method == 'GET' else None))
@@ -331,7 +326,7 @@ def criar_ou_entrar_no_supabase(email, senha):
 
 def autenticar_usuario(email, senha):
     try:
-        AUTH.sign_in(email, senha)
+        sessao_auth = AUTH.sign_in(email, senha)
     except InvalidCredentials:
         usuario = usuario_por_email(email)
         ok, atualizar = verificar_senha(senha, usuario.senha_hash if usuario else None)
@@ -344,8 +339,34 @@ def autenticar_usuario(email, senha):
         return usuario
 
     usuario = usuario_por_email(email)
-    if not usuario:
-        raise InvalidCredentials('E-mail ou senha incorretos.')
+    if usuario:
+        return usuario
+    return criar_perfil_local(email, senha, sessao_auth)
+
+
+def criar_perfil_local(email, senha, sessao_auth):
+    auth_user = sessao_auth.get('user')
+    if not isinstance(auth_user, dict) or not isinstance(auth_user.get('id'), str):
+        raise SupabaseAuthError('Supabase Auth não retornou os dados da conta.')
+    email_auth = auth_user.get('email')
+    if not isinstance(email_auth, str) or email_auth.casefold() != email.casefold():
+        raise SupabaseAuthError('Supabase Auth retornou um e-mail de conta inválido.')
+    try:
+        identificador = uuid.UUID(auth_user['id']).hex
+    except ValueError as exc:
+        raise SupabaseAuthError('Supabase Auth retornou um identificador inválido.') from exc
+
+    usuario = Usuario(nome=f'supabase_{identificador}', senha_hash=hash_senha(senha))
+    usuario.definir_email(email_auth)
+    db.session.add(usuario)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        usuario = usuario_por_email(email_auth)
+        if usuario:
+            return usuario
+        raise
     return usuario
 
 
@@ -377,50 +398,12 @@ def atualizar_email_usuario(usuario, novo_email):
 
 def mensagem_de_erro_auth(erro):
     if isinstance(erro, EmailConfirmationRequired):
-        return 'Desative a confirmação de e-mail em Authentication > Sign In / Providers > Email no Supabase.'
+        return 'Confirme seu e-mail pelo link enviado pelo Supabase e tente entrar novamente.'
     if isinstance(erro, AuthUnavailable):
         return 'Não foi possível conectar à autenticação do Supabase. Tente novamente.'
     if isinstance(erro, AccountAlreadyExists):
         return 'Já existe uma conta Supabase Auth com este e-mail.'
     return 'Não foi possível concluir a autenticação. Confira a configuração do Supabase.'
-
-
-@app.route('/primeiro_acesso', methods=['GET', 'POST'])
-def primeiro_acesso():
-    if request.method == 'POST':
-        nome = request.form.get('usuario', '').strip().lower()
-        email = request.form.get('email', '').strip()
-        erro = None if nome and len(nome) <= 50 else 'Informe um nome de usuário (até 50 caracteres).'
-        erro = erro or (None if email_valido(email) else 'Informe um e-mail válido.')
-        senha = request.form.get('senha', '')
-        erro = erro or validar_senha(senha, request.form.get('confirmacao', ''))
-        if erro:
-            flash(erro, 'error')
-        else:
-            if usuario_por_email(email):
-                flash('Este e-mail já está associado a um usuário do sistema.', 'error')
-                return render_template('primeiro_acesso.html')
-            try:
-                criar_ou_entrar_no_supabase(email, senha)
-            except SupabaseAuthError as exc:
-                app.logger.warning('Criação da conta Supabase falhou: %s', exc)
-                flash(mensagem_de_erro_auth(exc), 'error')
-                status = 503 if isinstance(exc, AuthUnavailable) else 200
-                return render_template('primeiro_acesso.html'), status
-            usuario = Usuario(nome=nome, senha_hash=hash_senha(senha))
-            usuario.definir_email(email)
-            db.session.add(usuario)
-            try:
-                db.session.commit()
-            except IntegrityError:
-                db.session.rollback()
-                flash('Não foi possível criar o usuário. Confira se o nome já está em uso.', 'error')
-                return render_template('primeiro_acesso.html')
-            session.clear()
-            session['usuario_id'] = usuario.id
-            session.permanent = True
-            return redirect(url_for('index'))
-    return render_template('primeiro_acesso.html')
 
 
 @app.route('/login', methods=['GET', 'POST'])

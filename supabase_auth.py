@@ -69,7 +69,7 @@ class SupabaseAuth:
                 raise AccountAlreadyExists('Já existe uma conta Supabase Auth para este e-mail.') from exc
             if code == 'email_not_confirmed' or 'email not confirmed' in texto:
                 raise EmailConfirmationRequired(
-                    'Desative a confirmação de e-mail no Supabase Auth para entrar sem SMTP.') from exc
+                    'Confirme o e-mail pelo link enviado pelo Supabase antes de entrar.') from exc
             raise SupabaseAuthError(f'Supabase Auth respondeu com HTTP {exc.code}.') from exc
         except (URLError, TimeoutError, OSError) as exc:
             raise AuthUnavailable('Não foi possível conectar ao Supabase Auth.') from exc
@@ -95,7 +95,7 @@ class SupabaseAuth:
         user = data.get('user')
         if not data.get('access_token') or not isinstance(user, dict) or not user.get('email'):
             raise EmailConfirmationRequired(
-                'Desative a confirmação de e-mail no Supabase Auth para criar contas sem SMTP.')
+                'Confirme o e-mail pelo link enviado pelo Supabase antes de entrar.')
         return data
 
     def sign_up_or_sign_in(self, email, password):

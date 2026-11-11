@@ -19,8 +19,8 @@ os.environ.update(
     SUPABASE_PUBLISHABLE_KEY='sb_publishable_test',
 )
 
-from app import AUTH, Usuario, app, db, hash_senha
-from supabase_auth import InvalidCredentials
+from app import AUTH, Usuario, app, db, hash_senha, usuario_por_email
+from supabase_auth import EmailConfirmationRequired, InvalidCredentials
 
 
 class AppAuthTests(unittest.TestCase):
@@ -41,21 +41,48 @@ class AppAuthTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             session['csrf'] = 'test-csrf'
 
-    def test_first_access_creates_supabase_account_without_email_code(self):
+    def test_empty_app_redirects_to_login(self):
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers['Location'].endswith('/login?proximo=/'))
+
+    def test_first_confirmed_supabase_login_creates_local_profile(self):
         self._csrf()
-        with patch.object(AUTH, 'sign_up_or_sign_in') as sign_up:
-            response = self.client.post('/primeiro_acesso', data={
+        with patch.object(AUTH, 'sign_in', return_value={
+            'access_token': 'token',
+            'user': {
+                'id': '67e55044-10b1-426f-9247-bb680e5fe0c8',
+                'email': 'ana@example.com',
+            },
+        }) as sign_in:
+            response = self.client.post('/login', data={
                 'csrf_token': 'test-csrf',
-                'usuario': 'ana',
                 'email': 'ana@example.com',
                 'senha': 'senha forte 123',
-                'confirmacao': 'senha forte 123',
             })
 
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.headers['Location'].endswith('/'))
-        self.assertIsNotNone(Usuario.query.filter_by(nome='ana').first())
-        sign_up.assert_called_once_with('ana@example.com', 'senha forte 123')
+        usuario = usuario_por_email('ana@example.com')
+        self.assertIsNotNone(usuario)
+        self.assertEqual(usuario.nome, 'supabase_67e5504410b1426f9247bb680e5fe0c8')
+        sign_in.assert_called_once_with('ana@example.com', 'senha forte 123')
+        response = self.client.get('/')
+        self.assertIn(b'Conectado como ana@example.com', response.data)
+
+    def test_unconfirmed_supabase_email_shows_confirmation_message(self):
+        self._csrf()
+        with patch.object(AUTH, 'sign_in', side_effect=EmailConfirmationRequired()):
+            response = self.client.post('/login', data={
+                'csrf_token': 'test-csrf',
+                'email': 'ana@example.com',
+                'senha': 'senha forte 123',
+            })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Confirme seu e-mail', response.data)
+        self.assertNotIn(b'Desative a confirma', response.data)
 
     def test_legacy_password_is_migrated_on_first_email_login(self):
         usuario = Usuario(nome='ana', senha_hash=hash_senha('senha forte 123'))
