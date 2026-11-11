@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ animal.nome }}{% endblock %}
+{% block content %}
+<a href="{% block back_url %}{{ url_for('procurar_animal') }}{% endblock %}" class="back-link">{{ icon('back', 16) }}{% block back_label %}Procurar animal{% endblock %}</a>
+<div class="page-head">
+    <div>
+        <h1>{{ animal.nome }}</h1>
+        <p class="muted">Tutor: <a href="{{ url_for('tutor_perfil', id=animal.tutor_id) }}">{{ animal.tutor.nome_completo }}</a></p>
+    </div>
+</div>
+<form method="POST" class="card">
+    <div class="form-grid">
+        <div class="field"><label for="nome">Nome</label><input type="text" id="nome" name="nome" value="{{ animal.nome }}" required></div>
+        <div class="field"><label for="raca">Raça</label><input type="text" id="raca" name="raca" value="{{ animal.raca }}" required></div>
+        <div class="field">
+            <label for="sexo">Sexo</label>
+            <select name="sexo" id="sexo" required>
+                <option value="macho" {% if animal.sexo == 'macho' %}selected{% endif %}>Macho</option>
+                <option value="femea" {% if animal.sexo == 'femea' %}selected{% endif %}>Fêmea</option>
+            </select>
+        </div>
+        <div class="field"><label for="microchip">Microchip</label><input type="text" id="microchip" name="microchip" value="{{ animal.microchip or '' }}"></div>
+    </div>
+    <div class="form-actions"><button type="submit" class="btn">Salvar alterações</button></div>
+</form>
+{% endblock %}

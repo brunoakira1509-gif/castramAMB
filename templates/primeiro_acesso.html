@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Primeiro acesso{% endblock %}
+{% block content %}
+<div class="auth-brand">{{ icon('paw', 22) }}CastraMóvel</div>
+<form method="POST" class="card auth-card">
+    <h1>Criar o primeiro usuário</h1>
+    <p class="muted">Ainda não há usuários. Este será o acesso inicial ao sistema.</p>
+    <div class="form-grid">
+        <div class="field full"><label for="usuario">Usuário</label><input type="text" id="usuario" name="usuario" autocomplete="username" required autofocus></div>
+        <div class="field full"><label for="senha">Senha</label><input type="password" id="senha" name="senha" minlength="8" autocomplete="new-password" required><p class="hint">Mínimo de 8 caracteres.</p></div>
+        <div class="field full"><label for="confirmacao">Repita a senha</label><input type="password" id="confirmacao" name="confirmacao" minlength="8" autocomplete="new-password" required></div>
+    </div>
+    <div class="form-actions"><button type="submit" class="btn">Criar usuário</button></div>
+</form>
+{% endblock %}

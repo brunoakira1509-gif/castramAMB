@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Procurar tutor{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Procurar tutor</h1></div>
+<form method="POST" class="card">
+    <div class="search-row">
+        <div class="field">
+            <label for="busca">Nome ou CPF</label>
+            <input type="search" id="busca" name="busca" value="{{ busca }}" required autofocus>
+        </div>
+        <button type="submit" class="btn">{{ icon('search') }}Buscar</button>
+    </div>
+</form>
+{% if tutores %}
+<div class="card flush table-wrap">
+    <table class="table">
+        <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th></tr></thead>
+        <tbody>
+        {% for tutor in tutores %}
+            <tr>
+                <td><a href="{{ url_for('tutor_perfil', id=tutor.id) }}">{{ tutor.nome_completo }}</a></td>
+                <td>{{ tutor.cpf }}</td>
+                <td>{{ tutor.telefone }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% elif busca %}
+<div class="card"><div class="empty"><p>Nenhum tutor encontrado para "{{ busca }}".</p><a href="{{ url_for('cadastrar_tutor') }}">Cadastrar tutor</a></div></div>
+{% endif %}
+{% endblock %}

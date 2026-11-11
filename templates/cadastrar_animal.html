@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Cadastrar animal{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Cadastrar animal</h1></div>
+<form method="POST" class="card">
+    <div class="form-grid">
+        <div class="field full">
+            <label for="tutor-busca">Tutor</label>
+            <input type="search" id="tutor-busca" placeholder="Filtrar por nome ou CPF" data-filter-select="tutor_id" autocomplete="off">
+            <select name="tutor_id" id="tutor_id" size="5" required style="margin-top: 8px;" aria-label="Lista de tutores">
+                {% for tutor in tutores %}
+                    <option value="{{ tutor.id }}">{{ tutor.nome_completo }} - {{ tutor.cpf }}</option>
+                {% endfor %}
+            </select>
+            {% if not tutores %}<p class="hint">Nenhum tutor cadastrado. <a href="{{ url_for('cadastrar_tutor') }}">Cadastrar tutor</a></p>{% endif %}
+        </div>
+        <div class="field"><label for="nome">Nome</label><input type="text" id="nome" name="nome" required></div>
+        <div class="field"><label for="raca">Raça</label><input type="text" id="raca" name="raca" required></div>
+        <div class="field">
+            <label for="sexo">Sexo</label>
+            <select name="sexo" id="sexo" required>
+                <option value="macho">Macho</option>
+                <option value="femea">Fêmea</option>
+            </select>
+        </div>
+        <div class="field"><label for="microchip">Microchip</label><input type="text" id="microchip" name="microchip"></div>
+    </div>
+    <div class="form-actions">
+        <button type="submit" class="btn">Cadastrar animal</button>
+        <a href="{{ url_for('index') }}" class="btn secondary">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Procurar animal{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Procurar animal</h1></div>
+<form method="POST" class="card">
+    <div class="search-row">
+        <div class="field">
+            <label for="busca">Nome ou microchip</label>
+            <input type="search" id="busca" name="busca" value="{{ busca }}" required autofocus>
+        </div>
+        <button type="submit" class="btn">{{ icon('search') }}Buscar</button>
+    </div>
+</form>
+{% if animais %}
+<div class="card flush table-wrap">
+    <table class="table">
+        <thead><tr><th>Nome</th><th>Raça</th><th>Sexo</th><th>Microchip</th><th>Tutor</th></tr></thead>
+        <tbody>
+        {% for animal in animais %}
+            <tr>
+                <td><a href="{{ url_for('animal_perfil', id=animal.id) }}">{{ animal.nome }}</a></td>
+                <td>{{ animal.raca }}</td>
+                <td>{{ 'Macho' if animal.sexo == 'macho' else 'Fêmea' }}</td>
+                <td>{% if animal.microchip %}{{ animal.microchip }}{% else %}<span class="muted">Sem microchip</span>{% endif %}</td>
+                <td><a href="{{ url_for('tutor_perfil', id=animal.tutor.id) }}">{{ animal.tutor.nome_completo }}</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% elif busca %}
+<div class="card"><div class="empty"><p>Nenhum animal encontrado para "{{ busca }}".</p><a href="{{ url_for('cadastrar_animal') }}">Cadastrar animal</a></div></div>
+{% endif %}
+{% endblock %}

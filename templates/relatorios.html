@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Relatórios{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Relatórios</h1></div>
+<div class="cols-2">
+    <form method="GET" action="{{ url_for('gerar_excel_mes') }}" class="card">
+        <div class="card-head"><h2>Agenda do mês</h2></div>
+        <div class="form-grid">
+            <div class="field full">
+                <label for="mes">Mês</label>
+                <select id="mes" name="mes" data-today="month" required>
+                    {% for n, nome in [(1,'Janeiro'),(2,'Fevereiro'),(3,'Março'),(4,'Abril'),(5,'Maio'),(6,'Junho'),(7,'Julho'),(8,'Agosto'),(9,'Setembro'),(10,'Outubro'),(11,'Novembro'),(12,'Dezembro')] %}
+                    <option value="{{ n }}">{{ nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field full"><label for="ano">Ano</label><input type="number" id="ano" name="ano" value="2026" data-today="year" required></div>
+        </div>
+        <div class="form-actions"><button type="submit" class="btn">{{ icon('download') }}Baixar Excel</button></div>
+    </form>
+    <form method="GET" action="{{ url_for('gerar_excel_dia') }}" class="card">
+        <div class="card-head"><h2>Agenda do dia</h2></div>
+        <div class="form-grid">
+            <div class="field full"><label for="data">Data</label><input type="date" id="data" name="data" data-today="date" required></div>
+        </div>
+        <div class="form-actions"><button type="submit" class="btn">{{ icon('download') }}Baixar Excel</button></div>
+    </form>
+</div>
+{% endblock %}

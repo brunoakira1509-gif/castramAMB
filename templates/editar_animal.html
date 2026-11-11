@@ -1,0 +1,3 @@
+{% extends "animal_perfil.html" %}
+{% block back_url %}{{ url_for('tutor_perfil', id=animal.tutor_id) }}{% endblock %}
+{% block back_label %}Perfil do tutor{% endblock %}

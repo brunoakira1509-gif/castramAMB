@@ -1,0 +1,56 @@
+{% from "_icons.html" import icon %}
+{% set nav = [
+  ('Agenda', [('index', 'Início', 'home'), ('agendamentos', 'Agendamentos', 'calendar'), ('relatorios', 'Relatórios', 'chart')]),
+  ('Tutores', [('procurar_tutor', 'Procurar tutor', 'search'), ('cadastrar_tutor', 'Cadastrar tutor', 'plus')]),
+  ('Animais', [('procurar_animal', 'Procurar animal', 'search'), ('cadastrar_animal', 'Cadastrar animal', 'plus')])
+] %}
+{% set cur = {'tutor_perfil': 'procurar_tutor', 'editar_animal': 'procurar_animal', 'animal_perfil': 'procurar_animal'}.get(request.endpoint, request.endpoint) %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{% endblock %} - CastraMóvel</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    {% if usuario_atual %}
+    <header class="topbar">
+        <button type="button" class="icon-btn" id="menu-toggle" aria-label="Abrir menu" aria-controls="sidebar">{{ icon('menu', 22) }}</button>
+        <span class="brand">{{ icon('paw', 22) }}CastraMóvel</span>
+    </header>
+    <aside class="sidebar" id="sidebar">
+        <a class="brand" href="{{ url_for('index') }}">{{ icon('paw', 22) }}CastraMóvel</a>
+        <nav aria-label="Principal">
+            {% for group, items in nav %}
+            <div class="nav-group">
+                <span class="nav-title">{{ group }}</span>
+                {% for ep, label, ic in items %}
+                <a href="{{ url_for(ep) }}" class="nav-link{% if cur == ep %} active{% endif %}"{% if cur == ep %} aria-current="page"{% endif %}>{{ icon(ic) }}{{ label }}</a>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </nav>
+        <div class="nav-user">
+            <span class="nav-title">Conectado como {{ usuario_atual.nome }}</span>
+            <a href="{{ url_for('alterar_senha') }}" class="nav-link{% if cur == 'alterar_senha' %} active{% endif %}">{{ icon('key') }}Alterar senha</a>
+            <form method="POST" action="{{ url_for('logout') }}"><button type="submit" class="nav-link">{{ icon('logout') }}Sair</button></form>
+        </div>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+    {% endif %}
+    <main class="content{% if not usuario_atual %} bare{% endif %}">
+        <div class="page">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% for category, message in messages %}
+                    <div class="flash {{ category if category in ('success', 'error') else 'success' }}" role="status">
+                        {{ icon('alert' if category == 'error' else 'check', 20) }}<span>{{ message }}</span>
+                    </div>
+                {% endfor %}
+            {% endwith %}
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
