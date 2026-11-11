@@ -19,7 +19,7 @@ os.environ.update(
     SUPABASE_PUBLISHABLE_KEY='sb_publishable_test',
 )
 
-from app import AUTH, Usuario, app, db, hash_senha, usuario_por_email
+from app import AUTH, Usuario, app, db, hash_senha, ler_tutor, usuario_por_email
 from supabase_auth import EmailConfirmationRequired, InvalidCredentials
 
 
@@ -40,6 +40,33 @@ class AppAuthTests(unittest.TestCase):
     def _csrf(self):
         with self.client.session_transaction() as session:
             session['csrf'] = 'test-csrf'
+
+    def test_tutor_accepts_any_eleven_cpf_digits_with_mask(self):
+        fields = {
+            'nome': 'Tutor de teste',
+            'telefone': '11999999999',
+            'cpf': '111.111.111-11',
+            'endereco': 'Rua de teste',
+            'numero': '1',
+        }
+
+        data, error = ler_tutor(fields)
+
+        self.assertIsNone(error)
+        self.assertEqual(data['cpf'], '111.111.111-11')
+
+    def test_tutor_still_requires_eleven_cpf_digits(self):
+        fields = {
+            'nome': 'Tutor de teste',
+            'telefone': '11999999999',
+            'cpf': '1234567890',
+            'endereco': 'Rua de teste',
+            'numero': '1',
+        }
+
+        _, error = ler_tutor(fields)
+
+        self.assertEqual(error, 'Informe os 11 dígitos do CPF.')
 
     def test_empty_app_redirects_to_login(self):
         response = self.client.get('/')

@@ -143,17 +143,6 @@ def so_digitos(texto):
     return re.sub(r'\D', '', texto or '')
 
 
-def cpf_valido(cpf):
-    d = so_digitos(cpf)
-    if len(d) != 11 or d == d[0] * 11:
-        return False
-    for i in (9, 10):
-        soma = sum(int(d[n]) * (i + 1 - n) for n in range(i))
-        if (soma * 10) % 11 % 10 != int(d[i]):
-            return False
-    return True
-
-
 def email_valido(email):
     if not email or len(email) > 254 or any(c in email for c in '<>"\'(),;:\\'):
         return False
@@ -182,13 +171,13 @@ def inteiro(valor):
 
 def ler_tutor(form):
     campos = {c: form.get(c, '').strip() for c in ('nome', 'telefone', 'cpf', 'endereco', 'numero')}
-    limites = {'nome': 100, 'telefone': 20, 'cpf': 14, 'endereco': 200, 'numero': 10}
+    limites = {'nome': 100, 'telefone': 20, 'cpf': 32, 'endereco': 200, 'numero': 10}
     if not all(campos.values()):
         return campos, 'Preencha todos os campos.'
     if any(len(campos[c]) > m for c, m in limites.items()):
         return campos, 'Algum campo ultrapassa o tamanho permitido.'
-    if not cpf_valido(campos['cpf']):
-        return campos, 'CPF inválido.'
+    if len(so_digitos(campos['cpf'])) != 11:
+        return campos, 'Informe os 11 dígitos do CPF.'
     return campos, None
 
 
