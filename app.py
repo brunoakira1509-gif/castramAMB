@@ -4,6 +4,7 @@ import mimetypes
 import os
 import re
 import secrets
+import tempfile
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -25,6 +26,8 @@ from seguranca import (SENHA_MAX, TextoCriptografado, cifrar_bytes, codigo_confe
                        verificar_senha)
 
 INSTANCE_DIR = os.path.join(BASE_DIR, 'instance')
+if os.environ.get('VERCEL'):
+    INSTANCE_DIR = os.path.join(tempfile.gettempdir(), 'castramovel-instance')
 
 app = Flask(__name__, instance_path=INSTANCE_DIR)
 os.makedirs(app.instance_path, exist_ok=True)
