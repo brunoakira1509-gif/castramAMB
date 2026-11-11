@@ -1,7 +1,6 @@
 import io
 import os
 import secrets
-import tempfile
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta
@@ -14,11 +13,7 @@ from openpyxl.styles import Border, Side
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-INSTANCE_DIR = (
-    os.path.join(tempfile.gettempdir(), 'castramovel-instance')
-    if os.environ.get('VERCEL')
-    else os.path.join(BASE_DIR, 'instance')
-)
+INSTANCE_DIR = os.path.join(BASE_DIR, 'instance')
 
 app = Flask(__name__, instance_path=INSTANCE_DIR)
 os.makedirs(app.instance_path, exist_ok=True)
