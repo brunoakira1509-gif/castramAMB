@@ -9,6 +9,7 @@
         <p class="muted">Espécie: {{ nome_especie(animal.especie) }}</p>
         <p class="muted">Tutor: <a href="{{ url_for('tutor_perfil', id=animal.tutor_id) }}">{{ animal.tutor.nome_completo }}</a></p>
     </div>
+    <a class="btn" href="{{ url_for('agendamentos', tutor_id=animal.tutor_id, animal_id=animal.id) }}">{{ icon('calendar') }}Agendar castração</a>
 </div>
 <form method="POST" class="card"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-grid">
@@ -33,4 +34,34 @@
     </div>
     <div class="form-actions"><button type="submit" class="btn">Salvar alterações</button></div>
 </form>
+<section class="card flush">
+    <div class="card-head"><h2>Agendamentos</h2></div>
+    {% if historico %}
+    <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>Data</th><th>Hora</th><th>Situação</th><th></th></tr></thead>
+            <tbody>
+            {% for ag in historico %}
+                <tr>
+                    <td><a href="{{ url_for('calendario', mes='%d-%02d' % (ag.data.year, ag.data.month), dia=ag.data.isoformat()) }}">{{ ag.data.strftime('%d/%m/%Y') }}</a></td>
+                    <td>{{ hora_texto(ag.hora) }}</td>
+                    <td>{% if ag.data >= hoje %}<span class="badge">Agendado</span>{% else %}<span class="badge empty">Registro anterior</span>{% endif %}</td>
+                    <td class="right">
+                        {% if ag.data >= hoje %}
+                        <form method="POST" action="{{ url_for('cancelar_agendamento', id=ag.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="voltar" value="{{ voltar }}">
+                            <button type="submit" class="btn-link danger" data-confirm="Cancelar este agendamento?">{{ icon('x', 14) }}Cancelar</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty left"><p>Nenhum agendamento para este animal.</p></div>
+    {% endif %}
+</section>
 {% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ doc.nome_arquivo }}{% endblock %}
+{% block content %}
+<a href="{{ url_for('tutor_perfil', id=tutor.id) }}" class="back-link">{{ icon('back', 16) }}Perfil de {{ tutor.nome_completo }}</a>
+<div class="page-head">
+    <div>
+        <h1 class="doc-title">{{ doc.nome_arquivo }}</h1>
+        <p class="muted">Documento anexado ao tutor <a href="{{ url_for('tutor_perfil', id=tutor.id) }}">{{ tutor.nome_completo }}</a></p>
+    </div>
+    {% if disponivel %}
+    <div class="head-actions">
+        {% if tipo != 'outro' %}<a class="btn secondary" href="{{ url_for('baixar_documento', id=doc.id) }}" target="_blank" rel="noopener">{{ icon('external') }}Abrir em nova aba</a>{% endif %}
+        <a class="btn" href="{{ url_for('baixar_documento', id=doc.id, baixar=1) }}">{{ icon('download') }}Baixar</a>
+    </div>
+    {% endif %}
+</div>
+
+{% if not disponivel %}
+<section class="card">
+    <div class="notice">
+        Não foi possível abrir este arquivo: ele não foi encontrado no servidor (ou não pôde ser descriptografado).
+        Anexe o documento novamente no <a href="{{ url_for('tutor_perfil', id=tutor.id) }}">perfil do tutor</a>.
+    </div>
+</section>
+{% elif tipo == 'pdf' %}
+<iframe class="doc-frame" src="{{ url_for('baixar_documento', id=doc.id) }}" title="{{ doc.nome_arquivo }}"></iframe>
+<p class="hint">Se o PDF não aparecer neste aparelho (acontece em alguns celulares), use “Abrir em nova aba” ou “Baixar”.</p>
+{% elif tipo == 'imagem' %}
+<img class="doc-img" src="{{ url_for('baixar_documento', id=doc.id) }}" alt="{{ doc.nome_arquivo }}">
+{% else %}
+<section class="card">
+    <div class="empty left">
+        <p>O navegador não consegue mostrar arquivos deste tipo (Word, Excel, texto). Baixe o arquivo para abri-lo.</p>
+        <a class="btn" href="{{ url_for('baixar_documento', id=doc.id, baixar=1) }}">{{ icon('download') }}Baixar {{ doc.nome_arquivo }}</a>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,37 +1,39 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_agenda.html" import grade_dia %}
 {% block title %}Início{% endblock %}
 {% block content %}
 <div class="page-head">
     <div>
-        <h1>Início</h1>
-        <p class="muted">{{ total_tutores }} tutores e {{ total_animais }} animais cadastrados.</p>
+        <h1>Hoje</h1>
+        <p class="muted">{{ data_extensa(dia) }}</p>
+        <p class="muted small">{{ total_tutores }} tutores e {{ total_animais }} animais cadastrados.</p>
     </div>
-    <a class="btn" href="{{ url_for('agendamentos') }}">{{ icon('calendar') }}Novo agendamento</a>
+    <div class="head-actions">
+        <a class="btn secondary" href="{{ url_for('calendario') }}">{{ icon('calendar') }}Calendário</a>
+        <a class="btn" href="{{ url_for('agendamentos') }}">{{ icon('plus') }}Novo agendamento</a>
+    </div>
 </div>
-<section class="card flush">
-    <div class="card-head"><h2>Próximos agendamentos</h2></div>
-    {% if proximos %}
-    <div class="table-wrap">
-        <table class="table">
-            <thead><tr><th>Data</th><th>Hora</th><th>Animal</th><th>Tutor</th></tr></thead>
-            <tbody>
-            {% for ag in proximos %}
-                <tr>
-                    <td>{{ ag.data.strftime('%d/%m/%Y') }}</td>
-                    <td>{{ ag.hora.strftime('%H:%M') }}</td>
-                    <td><a href="{{ url_for('animal_perfil', id=ag.animal.id) }}">{{ ag.animal.nome }}</a> <span class="muted">({{ nome_especie(ag.animal.especie) }})</span></td>
-                    <td><a href="{{ url_for('tutor_perfil', id=ag.animal.tutor.id) }}">{{ ag.animal.tutor.nome_completo }}</a></td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
+
+{% if not util %}
+<section class="card">
+    <div class="empty left">
+        <p><strong>Hoje não há atendimento.</strong> A castração acontece de segunda a sexta.</p>
+        {% if proximo %}<p>Próximo dia com agendamentos: <a href="{{ url_for('calendario', mes=proximo.strftime('%Y-%m'), dia=proximo.isoformat()) }}">{{ proximo.strftime('%d/%m/%Y') }}</a></p>{% endif %}
     </div>
-    {% else %}
-    <div class="empty">
-        <p>Nenhum agendamento a partir de hoje.</p>
-        <a href="{{ url_for('agendamentos') }}">Agendar uma castração</a>
-    </div>
-    {% endif %}
 </section>
+{% else %}
+<section class="card flush">
+    <div class="card-head">
+        <h2>Agenda de hoje</h2>
+        <span class="badge{% if grade.total == 0 %} empty{% endif %}">{{ grade.total }} {{ 'animal agendado' if grade.total == 1 else 'animais agendados' }}</span>
+    </div>
+    {{ grade_dia(grade, dia, hoje, url_for('index')) }}
+</section>
+{% if proximo %}
+<p class="muted">Próximo dia com agendamentos depois de hoje: <a href="{{ url_for('calendario', mes=proximo.strftime('%Y-%m'), dia=proximo.isoformat()) }}">{{ proximo.strftime('%d/%m/%Y') }}</a>. Para ver outros dias, use o <a href="{{ url_for('calendario') }}">Calendário</a>.</p>
+{% else %}
+<p class="muted">Para ver outros dias, use o <a href="{{ url_for('calendario') }}">Calendário</a>.</p>
+{% endif %}
+{% endif %}
 {% endblock %}

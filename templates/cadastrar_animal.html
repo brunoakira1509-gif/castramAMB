@@ -1,44 +1,56 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Cadastrar animal{% endblock %}
 {% block content %}
-<div class="page-head"><h1>Cadastrar animal</h1></div>
-<form method="POST" class="card"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<div class="page-head">
+    <div>
+        <h1>Cadastrar animal</h1>
+        <p class="muted">Primeiro o tutor, depois os dados do animal.</p>
+    </div>
+</div>
+
+{% if not tutor %}
+<section class="card">
+    <div class="card-head"><h2 class="step-title"><span class="step-n">1</span>Escolha o tutor</h2></div>
+    {% with acao='cadastrar_animal', extras={} %}{% include "_tutor_busca.html" %}{% endwith %}
+</section>
+{% else %}
+<div class="chosen">
+    <div>
+        <span class="muted">Tutor</span>
+        <strong><a href="{{ url_for('tutor_perfil', id=tutor.id) }}">{{ tutor.nome_completo }}</a></strong>
+    </div>
+    <a class="btn-link" href="{{ url_for('cadastrar_animal') }}">Trocar tutor</a>
+</div>
+
+<form method="POST" action="{{ url_for('cadastrar_animal', tutor_id=tutor.id) }}" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="tutor_id" value="{{ tutor.id }}">
+    <div class="card-head"><h2 class="step-title"><span class="step-n">2</span>Dados do animal</h2></div>
     <div class="form-grid">
-        <div class="field full">
-            <label for="tutor-busca">Tutor</label>
-            <input type="search" id="tutor-busca" placeholder="Digite o nome ou CPF para buscar"
-                   data-filter-select="tutor_id" autocomplete="off" aria-controls="tutor_id">
-            <p class="hint">Busque e selecione o tutor na lista.</p>
-            <select name="tutor_id" id="tutor_id" required class="mt-8" aria-label="Tutor">
-                <option value="">Selecione um tutor</option>
-                {% for tutor in tutores %}
-                    <option value="{{ tutor.id }}">{{ tutor.nome_completo }} - {{ tutor.cpf }}</option>
-                {% endfor %}
-            </select>
-            {% if not tutores %}<p class="hint">Nenhum tutor cadastrado. <a href="{{ url_for('cadastrar_tutor') }}">Cadastrar tutor</a></p>{% endif %}
-        </div>
-        <div class="field"><label for="nome">Nome</label><input type="text" id="nome" name="nome" required></div>
+        <div class="field"><label for="nome">Nome</label><input type="text" id="nome" name="nome" value="{{ form.get('nome', '') }}" required autofocus></div>
+        <div class="field"><label for="raca">Raça</label><input type="text" id="raca" name="raca" value="{{ form.get('raca', '') }}" placeholder="Ex.: SRD" required></div>
         <div class="field">
-            <label for="especie">Espécie</label>
-            <select name="especie" id="especie" required>
-                <option value="">Selecione uma espécie</option>
-                <option value="cao">Cão</option>
-                <option value="gato">Gato</option>
-            </select>
+            <label id="lbl-especie">Espécie</label>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-especie">
+                <input type="radio" name="especie" id="especie-cao" value="cao" required {% if form.get('especie') == 'cao' %}checked{% endif %}><label for="especie-cao">Cão</label>
+                <input type="radio" name="especie" id="especie-gato" value="gato" {% if form.get('especie') == 'gato' %}checked{% endif %}><label for="especie-gato">Gato</label>
+            </div>
         </div>
-        <div class="field"><label for="raca">Raça</label><input type="text" id="raca" name="raca" required></div>
         <div class="field">
-            <label for="sexo">Sexo</label>
-            <select name="sexo" id="sexo" required>
-                <option value="macho">Macho</option>
-                <option value="femea">Fêmea</option>
-            </select>
+            <label id="lbl-sexo">Sexo</label>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-sexo">
+                <input type="radio" name="sexo" id="sexo-macho" value="macho" required {% if form.get('sexo') == 'macho' %}checked{% endif %}><label for="sexo-macho">Macho</label>
+                <input type="radio" name="sexo" id="sexo-femea" value="femea" {% if form.get('sexo') == 'femea' %}checked{% endif %}><label for="sexo-femea">Fêmea</label>
+            </div>
         </div>
-        <div class="field"><label for="microchip">Microchip</label><input type="text" id="microchip" name="microchip"></div>
+        <p class="hint full-row">Espécie e sexo definem em quais horários o animal pode ser agendado.</p>
+        <div class="field full"><label for="microchip">Microchip <span class="muted">(opcional)</span></label><input type="text" id="microchip" name="microchip" value="{{ form.get('microchip', '') }}"></div>
     </div>
     <div class="form-actions">
         <button type="submit" class="btn">Cadastrar animal</button>
-        <a href="{{ url_for('index') }}" class="btn secondary">Cancelar</a>
+        <a href="{{ url_for('tutor_perfil', id=tutor.id) }}" class="btn secondary">Cancelar</a>
     </div>
 </form>
+{% endif %}
 {% endblock %}

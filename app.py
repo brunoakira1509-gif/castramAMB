@@ -10,16 +10,19 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 import pandas as pd
-from flask import (Flask, abort, flash, g, redirect, render_template, request, send_file,
+from flask import (Flask, abort, flash, g, jsonify, redirect, render_template, request, send_file,
                    session, url_for)
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl.styles import Border, Side
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import deferred, joinedload
 from werkzeug.exceptions import HTTPException
 
+from agenda_regras import (DIAS_CURTOS, MESES, data_extensa, dia_util, hoje, hora_texto, ler_data,
+                           ler_mes, mes_vizinho, montar_grade, opcoes_para_animal, resumo_dia,
+                           semanas_do_mes, verificar_vaga)
 from config import BASE_DIR, USAR_HTTPS, segredo, url_do_banco
-from seguranca import (SENHA_MAX, TextoCriptografado, cifrar_bytes, decifrar_bytes, hash_senha,
+from seguranca import (SENHA_MAX, ErroDeCriptografia, TextoCriptografado, cifrar_bytes, decifrar_bytes, hash_senha,
                        indice_cego, normalizar, validar_chaves, verificar_senha)
 from supabase_auth import (AccountAlreadyExists, AuthUnavailable, EmailConfirmationRequired,
                            InvalidCredentials, SupabaseAuth,
@@ -118,13 +121,17 @@ class Documento(db.Model):
     __tablename__ = 'documento'
     id = db.Column(db.Integer, primary_key=True)
     nome_arquivo = db.Column(enc('documento.nome_arquivo'), nullable=False)  # nome original, usado na tela
-    caminho = db.Column(db.String(200), nullable=False)  # nome aleatório do arquivo cifrado em uploads/
+    caminho = db.Column(db.String(200), nullable=False)  # id aleatório do arquivo (também protege o conteúdo cifrado)
+    # Conteúdo cifrado, guardado no banco para não se perder em hospedagens sem disco permanente (Vercel).
+    # Documentos antigos, sem este campo, continuam sendo lidos de instance/uploads/.
+    conteudo = deferred(db.Column(db.LargeBinary, nullable=True))
     tutor_id = db.Column(db.Integer, db.ForeignKey('tutor.id'), nullable=False)
 
 
 class Agendamento(db.Model):
     __tablename__ = 'agendamento'
-    __table_args__ = (db.UniqueConstraint('data', 'hora', name='uq_agendamento_data_hora'),)
+    # Vários animais podem ocupar o mesmo horário: o limite de vagas é conferido em agenda_regras.py.
+    __table_args__ = (db.Index('idx_agendamento_data', 'data'),)
     id = db.Column(db.Integer, primary_key=True)
     data = db.Column(db.Date, nullable=False)
     hora = db.Column(db.Time, nullable=False)
@@ -197,6 +204,10 @@ def nome_especie(especie):
     return ESPECIES.get(especie, 'Não informada')
 
 
+def nome_sexo(sexo):
+    return {'macho': 'Macho', 'femea': 'Fêmea'}.get(sexo, 'Não informado')
+
+
 # ---------------------------------------------------------------------------
 # Segurança de requisição: CSRF, login, cabeçalhos
 # ---------------------------------------------------------------------------
@@ -208,6 +219,10 @@ def csrf_token():
 
 app.jinja_env.globals['csrf_token'] = csrf_token
 app.jinja_env.globals['nome_especie'] = nome_especie
+app.jinja_env.globals['nome_sexo'] = nome_sexo
+app.jinja_env.globals['hora_texto'] = hora_texto
+app.jinja_env.globals['data_extensa'] = data_extensa
+app.jinja_env.globals['DIAS_CURTOS'] = DIAS_CURTOS
 
 
 @app.before_request
@@ -268,14 +283,15 @@ def exigir_login():
 
 
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-       "font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; "
+       "font-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; "
        "form-action 'self'; frame-ancestors 'none'")
 
 
 @app.after_request
 def cabecalhos(resposta):
     resposta.headers['X-Content-Type-Options'] = 'nosniff'
-    resposta.headers['X-Frame-Options'] = 'DENY'
+    # Só o arquivo do documento pode ser exibido dentro da própria página do sistema (pré-visualização de PDF).
+    resposta.headers['X-Frame-Options'] = 'SAMEORIGIN' if request.endpoint == 'baixar_documento' else 'DENY'
     resposta.headers['Referrer-Policy'] = 'no-referrer'
     resposta.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
     resposta.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
@@ -483,27 +499,55 @@ def salvar_documentos(arquivos, tutor):
             recusados += 1
             continue
         guardado = f'{uuid.uuid4().hex}.enc'
-        with open(os.path.join(app.config['UPLOAD_FOLDER'], guardado), 'wb') as f:
-            f.write(cifrar_bytes(conteudo, f'documento.arquivo:{guardado}'))
-        db.session.add(Documento(nome_arquivo=original, caminho=guardado, tutor_id=tutor.id))
+        cifrado = cifrar_bytes(conteudo, f'documento.arquivo:{guardado}')
+        db.session.add(Documento(nome_arquivo=original, caminho=guardado, conteudo=cifrado, tutor_id=tutor.id))
     db.session.commit()
     if recusados:
         flash(f'{recusados} arquivo(s) não enviado(s). Use PDF, imagem, Word, Excel ou texto.', 'error')
 
 
+def extensao_do_documento(doc):
+    nome = doc.nome_arquivo
+    return nome.rsplit('.', 1)[-1].lower() if '.' in nome else ''
+
+
+def ler_conteudo_documento(doc):
+    """Conteúdo já descriptografado, ou None se o arquivo não está mais disponível."""
+    guardado = os.path.basename(doc.caminho.replace('\\', '/'))
+    aad = f'documento.arquivo:{guardado}'
+    try:
+        if doc.conteudo is not None:
+            return decifrar_bytes(bytes(doc.conteudo), aad)
+        caminho = os.path.join(app.config['UPLOAD_FOLDER'], guardado)  # documentos enviados antes desta versão
+        if os.path.isfile(caminho):
+            with open(caminho, 'rb') as f:
+                return decifrar_bytes(f.read(), aad)
+    except ErroDeCriptografia:
+        app.logger.warning('Documento %s não pôde ser descriptografado', doc.id)
+    return None
+
+
 @app.route('/documento/<int:id>')
 def baixar_documento(id):
+    """O arquivo em si. Com ?baixar=1 força o download; PDF e imagem abrem no navegador."""
     doc = db.get_or_404(Documento, id)
-    guardado = os.path.basename(doc.caminho.replace('\\', '/'))
-    caminho = os.path.join(app.config['UPLOAD_FOLDER'], guardado)
-    if not os.path.isfile(caminho):
+    conteudo = ler_conteudo_documento(doc)
+    if conteudo is None:
         abort(404)
-    with open(caminho, 'rb') as f:
-        conteudo = decifrar_bytes(f.read(), f'documento.arquivo:{guardado}')
-    nome = doc.nome_arquivo
-    extensao = nome.rsplit('.', 1)[-1].lower() if '.' in nome else ''
-    return send_file(io.BytesIO(conteudo), mimetype=mimetypes.guess_type(nome)[0] or 'application/octet-stream',
-                     as_attachment=extensao not in EXIBIR_NO_NAVEGADOR, download_name=nome)
+    extensao = extensao_do_documento(doc)
+    mostrar = extensao in EXIBIR_NO_NAVEGADOR and not request.args.get('baixar')
+    return send_file(io.BytesIO(conteudo), mimetype=mimetypes.guess_type(doc.nome_arquivo)[0] or 'application/octet-stream',
+                     as_attachment=not mostrar, download_name=doc.nome_arquivo)
+
+
+@app.route('/documento/<int:id>/ver')
+def ver_documento(id):
+    """Página de visualização dentro do sistema, com botões de abrir em nova aba e baixar."""
+    doc = db.get_or_404(Documento, id)
+    extensao = extensao_do_documento(doc)
+    disponivel = ler_conteudo_documento(doc) is not None
+    tipo = 'pdf' if extensao == 'pdf' else 'imagem' if extensao in EXIBIR_NO_NAVEGADOR else 'outro'
+    return render_template('documento_ver.html', doc=doc, tutor=doc.tutor, tipo=tipo, disponivel=disponivel)
 
 
 # ---------------------------------------------------------------------------
@@ -527,16 +571,104 @@ def buscar_animais(busca):
     return sorted(animais, key=lambda a: normalizar(a.nome))
 
 
+LIMITE_LISTA = 12  # quantos tutores aparecem de uma vez nas listas de escolha
+
+
+def contagem_animais():
+    return dict(db.session.query(Animal.tutor_id, db.func.count(Animal.id)).group_by(Animal.tutor_id).all())
+
+
+def resumir_tutores(tutores):
+    """Dados mostrados em cada tutor das listas de escolha (nome e uma linha de detalhes)."""
+    contagem = contagem_animais()
+    itens = []
+    for tutor in tutores:
+        n = contagem.get(tutor.id, 0)
+        partes = [tutor.telefone]
+        digitos = so_digitos(tutor.cpf)
+        if len(digitos) == 11:
+            partes.append(f'CPF ***.***.***-{digitos[-2:]}')
+        partes.append('sem animais' if n == 0 else '1 animal' if n == 1 else f'{n} animais')
+        itens.append({'id': tutor.id, 'nome': tutor.nome_completo, 'detalhe': ' · '.join(partes)})
+    return itens
+
+
+def tutores_para_lista(busca):
+    encontrados = buscar_tutores(busca) if busca else todos_tutores()
+    return resumir_tutores(encontrados[:LIMITE_LISTA]), len(encontrados)
+
+
+def tutor_escolhido():
+    """Tutor indicado em ?tutor_id= (ou no formulário), ou None."""
+    try:
+        return db.session.get(Tutor, int(request.values.get('tutor_id', '')))
+    except ValueError:
+        return None
+
+
+def agendamentos_do_dia(dia):
+    return (Agendamento.query.options(joinedload(Agendamento.animal).joinedload(Animal.tutor))
+            .filter_by(data=dia).order_by(Agendamento.hora, Agendamento.id).all())
+
+
+def bloquear_dia(dia):
+    """Faz agendamentos do mesmo dia esperarem a vez (PostgreSQL), para duas pessoas
+    não passarem do limite de vagas ao clicar ao mesmo tempo. Liberado no commit/rollback."""
+    if db.engine.dialect.name == 'postgresql':
+        db.session.execute(db.text('select pg_advisory_xact_lock(:chave)'), {'chave': dia.toordinal()})
+
+
+def voltar_para():
+    return request.full_path.rstrip('?')
+
+
+@app.context_processor
+def contexto_agenda():
+    return {'hoje': hoje()}
+
+
 # ---------------------------------------------------------------------------
 # Rotas
 # ---------------------------------------------------------------------------
 @app.route('/')
 def index():
-    proximos = (Agendamento.query.options(joinedload(Agendamento.animal).joinedload(Animal.tutor))
-                .filter(Agendamento.data >= date.today())
-                .order_by(Agendamento.data, Agendamento.hora).limit(10).all())
-    return render_template('index.html', proximos=proximos,
+    dia = hoje()  # só o dia de hoje; os demais ficam na aba Calendário
+    grade = montar_grade(agendamentos_do_dia(dia))
+    proximo = (db.session.query(db.func.min(Agendamento.data)).filter(Agendamento.data > dia).scalar())
+    return render_template('index.html', dia=dia, grade=grade, util=dia_util(dia), proximo=proximo,
                            total_tutores=Tutor.query.count(), total_animais=Animal.query.count())
+
+
+@app.route('/calendario')
+def calendario():
+    hj = hoje()
+    ano, mes = ler_mes(request.args.get('mes'), hj)
+    semanas = semanas_do_mes(ano, mes)
+    primeiro, ultimo = semanas[0][0], semanas[-1][-1]
+    dia = ler_data(request.args.get('dia'))
+    if dia is None or not primeiro <= dia <= ultimo:
+        dia = hj if (hj.year, hj.month) == (ano, mes) else date(ano, mes, 1)
+    agendamentos = (Agendamento.query.options(joinedload(Agendamento.animal).joinedload(Animal.tutor))
+                    .filter(Agendamento.data.between(primeiro, ultimo))
+                    .order_by(Agendamento.data, Agendamento.hora, Agendamento.id).all())
+    por_dia = defaultdict(list)
+    for ag in agendamentos:
+        por_dia[ag.data].append(ag)
+    resumos = {d: resumo_dia(lista) for d, lista in por_dia.items()}
+    anterior, seguinte = mes_vizinho(ano, mes, -1), mes_vizinho(ano, mes, 1)
+    return render_template('calendario.html', ano=ano, mes=mes, nome_mes=MESES[mes - 1].capitalize(),
+                           semanas=semanas, resumos=resumos, dia=dia, util=dia_util(dia),
+                           grade=montar_grade(por_dia.get(dia, [])), voltar=voltar_para(),
+                           mes_anterior=f'{anterior[0]}-{anterior[1]:02d}',
+                           mes_seguinte=f'{seguinte[0]}-{seguinte[1]:02d}',
+                           mes_atual=f'{hj.year}-{hj.month:02d}')
+
+
+@app.route('/api/tutores')
+def api_tutores():
+    """Busca de tutores enquanto a pessoa digita (usada pelas telas de animal e agendamento)."""
+    itens, total = tutores_para_lista(request.args.get('q', '').strip()[:100])
+    return jsonify(tutores=itens, total=total)
 
 
 @app.route('/cadastrar_tutor', methods=['GET', 'POST'])
@@ -564,13 +696,14 @@ def cadastrar_tutor():
 
 @app.route('/cadastrar_animal', methods=['GET', 'POST'])
 def cadastrar_animal():
-    search = request.args.get('search', '')
-    tutores = buscar_tutores(search) if search else todos_tutores()
+    tutor = tutor_escolhido()
+    busca = request.args.get('q', '').strip()
+    if tutor is None:  # passo 1: escolher o tutor
+        itens, total = tutores_para_lista(busca)
+        return render_template('cadastrar_animal.html', tutor=None, busca=busca, itens=itens, total=total,
+                               form={}, limite=LIMITE_LISTA)
     if request.method == 'POST':
         dados, erro = ler_animal(request.form)
-        tutor = db.session.get(Tutor, inteiro(request.form.get('tutor_id')))
-        if tutor is None:
-            erro = 'Escolha um tutor.'
         if not erro:
             animal = Animal(nome=dados['nome'], especie=dados['especie'], raca=dados['raca'],
                             sexo=dados['sexo'], tutor_id=tutor.id)
@@ -583,10 +716,10 @@ def cadastrar_animal():
                 erro = 'Já existe um animal com esse microchip.'
         if erro:
             flash(erro, 'error')
-            return render_template('cadastrar_animal.html', tutores=tutores, search=search)
-        flash('Animal cadastrado com sucesso!', 'success')
-        return redirect(url_for('index'))
-    return render_template('cadastrar_animal.html', tutores=tutores, search=search)
+            return render_template('cadastrar_animal.html', tutor=tutor, form=request.form)
+        flash(f'{animal.nome} cadastrado(a) com sucesso!', 'success')
+        return redirect(url_for('tutor_perfil', id=tutor.id))
+    return render_template('cadastrar_animal.html', tutor=tutor, form={})
 
 
 @app.route('/procurar_tutor', methods=['GET', 'POST'])
@@ -623,6 +756,11 @@ def tutor_perfil(id):
 
 def salvar_animal(animal):
     dados, erro = ler_animal(request.form)
+    if not erro and (dados['especie'], dados['sexo']) != (animal.especie, animal.sexo):
+        futuro = Agendamento.query.filter(Agendamento.animal_id == animal.id, Agendamento.data >= hoje()).first()
+        if futuro:
+            erro = ('Este animal tem agendamento a partir de hoje. Cancele o agendamento antes de mudar a espécie '
+                    'ou o sexo, pois cada horário atende apenas algumas categorias.')
     if not erro:
         animal.nome, animal.especie = dados['nome'], dados['especie']
         animal.raca, animal.sexo = dados['raca'], dados['sexo']
@@ -635,12 +773,18 @@ def salvar_animal(animal):
     flash(erro or 'Animal atualizado!', 'error' if erro else 'success')
 
 
+def historico_do_animal(animal):
+    return (Agendamento.query.filter_by(animal_id=animal.id)
+            .order_by(Agendamento.data.desc(), Agendamento.hora.desc()).all())
+
+
 @app.route('/editar_animal/<int:id>', methods=['GET', 'POST'])
 def editar_animal(id):
     animal = db.get_or_404(Animal, id)
     if request.method == 'POST':
         salvar_animal(animal)
-    return render_template('editar_animal.html', animal=animal)
+    return render_template('editar_animal.html', animal=animal, historico=historico_do_animal(animal),
+                           voltar=voltar_para())
 
 
 @app.route('/procurar_animal', methods=['GET', 'POST'])
@@ -658,19 +802,40 @@ def animal_perfil(id):
     animal = db.get_or_404(Animal, id)
     if request.method == 'POST':
         salvar_animal(animal)
-    return render_template('animal_perfil.html', animal=animal)
+    return render_template('animal_perfil.html', animal=animal, historico=historico_do_animal(animal),
+                           voltar=voltar_para())
 
 
-@app.route('/agendamentos', methods=['GET', 'POST'])
+@app.route('/agendamentos')
 def agendamentos():
-    tutores = todos_tutores()
-    selected_tutor = None
-    animais = []
-    if request.method == 'POST' and request.form.get('tutor_id'):
-        selected_tutor = db.session.get(Tutor, inteiro(request.form.get('tutor_id')))
-        if selected_tutor:
-            animais = selected_tutor.animais
-    return render_template('agendamentos.html', tutores=tutores, selected_tutor=selected_tutor, animais=animais)
+    """Passo a passo: tutor, animal, data e horário. Tudo por GET; só a confirmação é POST (/agendar)."""
+    hj = hoje()
+    data = ler_data(request.args.get('data'))
+    hora_escolhida = request.args.get('hora', '')
+    extras = {k: request.args[k] for k in ('data', 'hora') if request.args.get(k)}
+    tutor = tutor_escolhido()
+    if tutor is None:  # passo 1
+        busca = request.args.get('q', '').strip()
+        itens, total = tutores_para_lista(busca)
+        return render_template('agendamentos.html', tutor=None, busca=busca, itens=itens, total=total,
+                               extras=extras, limite=LIMITE_LISTA)
+
+    animais = sorted(tutor.animais, key=lambda a: normalizar(a.nome))
+    animal = next((a for a in animais if str(a.id) == request.args.get('animal_id', '')), None)
+    if animal is None and len(animais) == 1:
+        animal = animais[0]
+    opcoes, erro_data = [], None
+    if animal is not None and data is not None:
+        if not dia_util(data):
+            erro_data = 'Atendemos apenas de segunda a sexta. Escolha outra data.'
+        elif data < hj:
+            erro_data = 'Essa data já passou. Escolha hoje ou uma data futura (para ver dias anteriores use o Calendário).'
+        else:
+            opcoes = opcoes_para_animal(montar_grade(agendamentos_do_dia(data)), animal.especie, animal.sexo)
+    return render_template('agendamentos.html', tutor=tutor, animais=animais, animal=animal, data=data,
+                           hora_escolhida=hora_escolhida, opcoes=opcoes, erro_data=erro_data, extras=extras,
+                           animal_sem_dados=animal is not None and (animal.especie not in ESPECIES
+                                                                    or animal.sexo not in ('macho', 'femea')))
 
 
 @app.route('/agendar', methods=['POST'])
@@ -679,23 +844,52 @@ def agendar():
         data = datetime.strptime(request.form['data'], '%Y-%m-%d').date()
         hora = datetime.strptime(request.form['hora'], '%H:%M').time()
     except (KeyError, ValueError):
-        abort(400)
+        flash('Escolha a data e o horário.', 'error')
+        return redirect(url_for('agendamentos'))
     animal = db.get_or_404(Animal, inteiro(request.form.get('animal_id')))
-    if data.weekday() >= 5:
-        flash('Agendamentos apenas de segunda a sexta.', 'error')
-    elif data < date.today():
-        flash('Escolha hoje ou uma data futura.', 'error')
-    elif Agendamento.query.filter_by(data=data, hora=hora).first():
-        flash('Horário já ocupado!', 'error')
+    voltar = url_for('agendamentos', tutor_id=animal.tutor_id, animal_id=animal.id, data=data.isoformat())
+    erro = None
+    if not dia_util(data):
+        erro = 'Agendamentos apenas de segunda a sexta.'
+    elif data < hoje():
+        erro = 'Escolha hoje ou uma data futura.'
     else:
-        db.session.add(Agendamento(data=data, hora=hora, animal_id=animal.id))
-        try:
-            db.session.commit()
-            flash('Agendamento realizado!', 'success')
-        except IntegrityError:  # duas pessoas no mesmo horário ao mesmo tempo
-            db.session.rollback()
-            flash('Horário já ocupado!', 'error')
-    return redirect(url_for('agendamentos'))
+        bloquear_dia(data)  # a conferência de vagas e a gravação acontecem sem outra pessoa no meio
+        _, erro = verificar_vaga(hora, animal.especie, animal.sexo, agendamentos_do_dia(data))
+        if not erro:
+            ja = (Agendamento.query.filter(Agendamento.animal_id == animal.id, Agendamento.data >= hoje())
+                  .order_by(Agendamento.data, Agendamento.hora).first())
+            if ja:
+                erro = (f'{animal.nome} já está agendado(a) para {ja.data.strftime("%d/%m/%Y")} às '
+                        f'{hora_texto(ja.hora)}. Cancele esse agendamento antes de marcar outro.')
+    if erro:
+        db.session.rollback()
+        flash(erro, 'error')
+        return redirect(voltar)
+    db.session.add(Agendamento(data=data, hora=hora, animal_id=animal.id))
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        app.logger.exception('Falha ao gravar agendamento (o banco foi atualizado com o supabase_schema.sql?)')
+        flash('Não foi possível salvar o agendamento. Tente novamente; se continuar, avise o responsável pelo sistema.',
+              'error')
+        return redirect(voltar)
+    flash(f'{animal.nome} agendado(a) para {data.strftime("%d/%m/%Y")} às {hora_texto(hora)}.', 'success')
+    return redirect(url_for('calendario', mes=f'{data.year}-{data.month:02d}', dia=data.isoformat()))
+
+
+@app.route('/agendamentos/<int:id>/cancelar', methods=['POST'])
+def cancelar_agendamento(id):
+    ag = db.get_or_404(Agendamento, id)
+    destino = destino_seguro(request.form.get('voltar'))
+    if ag.data < hoje():
+        flash('Agendamentos de dias anteriores ficam guardados como registro e não podem ser cancelados.', 'error')
+    else:
+        db.session.delete(ag)
+        db.session.commit()
+        flash('Agendamento cancelado. A vaga está livre novamente.', 'success')
+    return redirect(destino)
 
 
 # ---------------------------------------------------------------------------

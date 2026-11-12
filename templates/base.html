@@ -1,10 +1,10 @@
 {% from "_icons.html" import icon %}
 {% set nav = [
-  ('Agenda', [('index', 'Início', 'home'), ('agendamentos', 'Agendamentos', 'calendar'), ('relatorios', 'Relatórios', 'chart')]),
+  ('Agenda', [('index', 'Início', 'home'), ('calendario', 'Calendário', 'calendar'), ('agendamentos', 'Novo agendamento', 'plus'), ('relatorios', 'Relatórios', 'chart')]),
   ('Tutores', [('procurar_tutor', 'Procurar tutor', 'search'), ('cadastrar_tutor', 'Cadastrar tutor', 'plus')]),
   ('Animais', [('procurar_animal', 'Procurar animal', 'search'), ('cadastrar_animal', 'Cadastrar animal', 'plus')])
 ] %}
-{% set cur = {'tutor_perfil': 'procurar_tutor', 'editar_animal': 'procurar_animal', 'animal_perfil': 'procurar_animal'}.get(request.endpoint, request.endpoint) %}
+{% set cur = {'tutor_perfil': 'procurar_tutor', 'ver_documento': 'procurar_tutor', 'editar_animal': 'procurar_animal', 'animal_perfil': 'procurar_animal'}.get(request.endpoint, request.endpoint) %}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>

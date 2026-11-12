@@ -1,45 +1,115 @@
 {% extends "base.html" %}
-{% block title %}Agendamentos{% endblock %}
+{% from "_icons.html" import icon %}
+{% block title %}Novo agendamento{% endblock %}
 {% block content %}
-<div class="page-head"><h1>Agendamentos</h1></div>
-<form method="POST" class="card"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="field full">
-        <label for="tutor_id">Tutor</label>
-        <select name="tutor_id" id="tutor_id" data-autosubmit>
-            <option value="">Escolher tutor</option>
-            {% for tutor in tutores %}
-                <option value="{{ tutor.id }}" {% if selected_tutor and selected_tutor.id == tutor.id %}selected{% endif %}>{{ tutor.nome_completo }}</option>
-            {% endfor %}
-        </select>
-        <noscript><button type="submit" class="btn secondary mt-10">Selecionar</button></noscript>
+<div class="page-head">
+    <div>
+        <h1>Novo agendamento</h1>
+        <p class="muted">Tutor, animal, data e horário. Só aparecem como disponíveis os horários que atendem o animal escolhido.</p>
     </div>
-</form>
-{% if selected_tutor %}
+    <a class="btn secondary" href="{{ url_for('calendario') }}">{{ icon('calendar') }}Ver calendário</a>
+</div>
+
+{% if not tutor %}
 <section class="card">
-    <div class="card-head"><h2>Agendar castração para {{ selected_tutor.nome_completo }}</h2></div>
-    {% if animais %}
-    <form method="POST" action="{{ url_for('agendar') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-grid">
-            <div class="field full">
-                <label for="animal_id">Animal</label>
-                <select name="animal_id" id="animal_id" required>
-                    {% for animal in animais %}
-                        <option value="{{ animal.id }}">{{ animal.nome }} ({{ nome_especie(animal.especie) }}, {{ animal.raca }})</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="field">
-                <label for="data">Data</label>
-                <input type="date" id="data" name="data" data-weekdays required>
-                <p class="hint">Disponível de segunda a sexta.</p>
-            </div>
-            <div class="field"><label for="hora">Hora</label><input type="time" id="hora" name="hora" required></div>
+    <div class="card-head"><h2 class="step-title"><span class="step-n">1</span>Escolha o tutor</h2></div>
+    {% with acao='agendamentos' %}{% include "_tutor_busca.html" %}{% endwith %}
+</section>
+{% else %}
+<div class="chosen">
+    <div>
+        <span class="muted">Tutor</span>
+        <strong><a href="{{ url_for('tutor_perfil', id=tutor.id) }}">{{ tutor.nome_completo }}</a></strong>
+    </div>
+    <a class="btn-link" href="{{ url_for('agendamentos', **extras) }}">Trocar tutor</a>
+</div>
+
+{% if not animais %}
+<section class="card">
+    <div class="card-head"><h2 class="step-title"><span class="step-n">2</span>Animal</h2></div>
+    <div class="empty left">
+        <p>Este tutor ainda não tem animais cadastrados.</p>
+        <a class="btn" href="{{ url_for('cadastrar_animal', tutor_id=tutor.id) }}">{{ icon('plus') }}Cadastrar animal</a>
+    </div>
+</section>
+{% else %}
+<form method="GET" action="{{ url_for('agendamentos') }}" class="card" id="form-escolha">
+    <input type="hidden" name="tutor_id" value="{{ tutor.id }}">
+    {% if hora_escolhida %}<input type="hidden" name="hora" value="{{ hora_escolhida }}">{% endif %}
+    {% if data and (not animal or animal_sem_dados) %}<input type="hidden" name="data" value="{{ data.isoformat() }}">{% endif %}
+    <div class="card-head"><h2 class="step-title"><span class="step-n">2</span>Qual animal?</h2></div>
+    <div class="opts">
+        {% for a in animais %}
+        <div class="opt">
+            <input type="radio" name="animal_id" id="animal-{{ a.id }}" value="{{ a.id }}" data-autosubmit {% if animal and animal.id == a.id %}checked{% endif %}>
+            <label for="animal-{{ a.id }}">
+                <strong>{{ a.nome }}</strong>
+                <span>{{ nome_especie(a.especie) }} · {{ nome_sexo(a.sexo) }}</span>
+                <span class="muted">{{ a.raca }}</span>
+            </label>
         </div>
-        <div class="form-actions"><button type="submit" class="btn">Agendar</button></div>
-    </form>
+        {% endfor %}
+    </div>
+    <a class="btn-link mt-8" href="{{ url_for('cadastrar_animal', tutor_id=tutor.id) }}">{{ icon('plus', 14) }}Cadastrar outro animal para este tutor</a>
+
+    {% if animal and animal_sem_dados %}
+    <div class="notice mt-16">Falta informar a espécie ou o sexo de {{ animal.nome }}. <a href="{{ url_for('animal_perfil', id=animal.id) }}">Completar o cadastro</a> para poder agendar.</div>
+    {% elif animal %}
+    <div class="card-head mt-24"><h2 class="step-title"><span class="step-n">3</span>Qual data?</h2></div>
+    <div class="date-row">
+        <div class="field">
+            <label for="data" class="sr-only">Data</label>
+            <input type="date" id="data" name="data" value="{{ data.isoformat() if data else '' }}" data-weekdays required>
+        </div>
+        <button type="submit" class="btn">Ver horários</button>
+    </div>
+    <p class="hint">Atendemos de segunda a sexta.</p>
+    {% endif %}
+    <noscript><button type="submit" class="btn secondary mt-10">Continuar</button></noscript>
+</form>
+
+{% if animal and not animal_sem_dados and data %}
+<section class="card">
+    {% if erro_data %}
+    <div class="card-head"><h2 class="step-title"><span class="step-n">4</span>Horário</h2></div>
+    <div class="notice">{{ erro_data }}</div>
     {% else %}
-    <div class="empty"><p>Este tutor ainda não tem animais cadastrados.</p><a href="{{ url_for('cadastrar_animal') }}">Cadastrar animal</a></div>
+    <form method="POST" action="{{ url_for('agendar') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="animal_id" value="{{ animal.id }}">
+        <input type="hidden" name="data" value="{{ data.isoformat() }}">
+        <div class="card-head"><h2 class="step-title"><span class="step-n">4</span>Escolha o horário</h2></div>
+        <p class="muted small">{{ animal.nome }} ({{ nome_especie(animal.especie) }}, {{ nome_sexo(animal.sexo)|lower }}) · {{ data_extensa(data) }}</p>
+        <div class="opts slots">
+            {% for o in opcoes %}
+            <div class="opt">
+                <input type="radio" name="hora" id="hora-{{ o.texto|replace(':', '') }}" value="{{ o.texto }}" required
+                       {% if o.status != 'livre' %}disabled{% endif %}
+                       {% if o.status == 'livre' and hora_escolhida == o.texto %}checked{% endif %}>
+                <label for="hora-{{ o.texto|replace(':', '') }}">
+                    <strong class="slot-time">{{ o.texto }}</strong>
+                    {% if o.status == 'livre' %}
+                    <span>{{ o.rotulo }}</span>
+                    <span class="ok">{{ o.livres }} de {{ o.limite }} {{ 'vaga livre' if o.livres == 1 else 'vagas livres' }}</span>
+                    {% elif o.status == 'cheio' %}
+                    <span>{{ o.rotulo }}</span>
+                    <span class="bad">Lotado</span>
+                    {% else %}
+                    <span class="muted">{{ o.motivo }}</span>
+                    {% endif %}
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+        {% if not (opcoes | selectattr('status', 'equalto', 'livre') | list) %}
+        <div class="notice mt-16">Não há horário livre nesse dia para {{ animal.nome }}. Tente outra data.</div>
+        {% else %}
+        <div class="form-actions"><button type="submit" class="btn">Confirmar agendamento</button></div>
+        {% endif %}
+    </form>
     {% endif %}
 </section>
+{% endif %}
+{% endif %}
 {% endif %}
 {% endblock %}

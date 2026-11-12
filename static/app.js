@@ -25,36 +25,61 @@
     });
 
     // Envia o formulário ao trocar a seleção (substitui o onchange inline, bloqueado pela política de segurança)
-    document.querySelectorAll('select[data-autosubmit]').forEach(function (select) {
-        select.addEventListener('change', function () { select.form.submit(); });
+    document.querySelectorAll('[data-autosubmit]').forEach(function (campo) {
+        campo.addEventListener('change', function () { campo.form.submit(); });
     });
 
-    // Filtro de uma lista de seleção enquanto digita
-    document.querySelectorAll('[data-filter-select]').forEach(function (input) {
-        var select = document.getElementById(input.dataset.filterSelect);
-        var placeholder = select.options.length && select.options[0].value === ''
-            ? select.options[0].text : 'Selecione uma opção';
-        var all = Array.from(select.options)
-            .filter(function (o) { return o.value !== ''; })
-            .map(function (o) { return { value: o.value, text: o.text }; });
-        input.addEventListener('input', function () {
-            var q = input.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-            var current = select.value;
-            var matches = all.filter(function (o) {
-                return o.text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').indexOf(q) !== -1;
-            });
-            select.innerHTML = '';
-            select.add(new Option(placeholder, ''));
-            matches.forEach(function (o) {
-                var opt = new Option(o.text, o.value);
-                select.add(opt);
-            });
-            if (!matches.length && q) {
-                var none = new Option('Nenhum tutor encontrado', '');
-                none.disabled = true;
-                select.add(none);
+    // Pede confirmação antes de ações como cancelar um agendamento
+    document.querySelectorAll('[data-confirm]').forEach(function (botao) {
+        botao.addEventListener('click', function (evento) {
+            if (!window.confirm(botao.dataset.confirm)) evento.preventDefault();
+        });
+    });
+
+    // Busca de tutor enquanto digita: troca a lista de resultados sem recarregar a página
+    document.querySelectorAll('[data-tutor-live]').forEach(function (campo) {
+        var lista = document.getElementById(campo.dataset.target);
+        var modelo = campo.dataset.href; // contém __ID__ no lugar do número do tutor
+        var espera = null;
+        var pedido = 0;
+
+        function mostrar(tutores) {
+            lista.textContent = '';
+            if (!tutores.length) {
+                var vazio = document.createElement('p');
+                vazio.className = 'empty-inline';
+                vazio.textContent = 'Nenhum tutor encontrado.';
+                lista.appendChild(vazio);
+                return;
             }
-            select.value = matches.some(function (o) { return o.value === current; }) ? current : '';
+            tutores.forEach(function (t) {
+                var link = document.createElement('a');
+                link.className = 'pick';
+                link.href = modelo.replace('__ID__', encodeURIComponent(t.id));
+                var nome = document.createElement('span');
+                nome.className = 'pick-name';
+                nome.textContent = t.nome;
+                var detalhe = document.createElement('span');
+                detalhe.className = 'pick-meta';
+                detalhe.textContent = t.detalhe;
+                link.appendChild(nome);
+                link.appendChild(detalhe);
+                lista.appendChild(link);
+            });
+        }
+
+        campo.addEventListener('input', function () {
+            clearTimeout(espera);
+            espera = setTimeout(function () {
+                var este = ++pedido;
+                fetch(campo.dataset.endpoint + '?q=' + encodeURIComponent(campo.value.trim()), {
+                    headers: { 'Accept': 'application/json' }, credentials: 'same-origin'
+                }).then(function (resposta) {
+                    return resposta.ok ? resposta.json() : Promise.reject();
+                }).then(function (dados) {
+                    if (este === pedido) mostrar(dados.tutores);
+                }).catch(function () { /* sem rede: a lista atual continua e o botão Buscar funciona */ });
+            }, 200);
         });
     });
 })();

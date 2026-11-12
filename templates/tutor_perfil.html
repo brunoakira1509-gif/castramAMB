@@ -17,11 +17,17 @@
 </form>
 <div class="cols-2">
     <section class="card">
-        <div class="card-head"><h2>Animais</h2><a href="{{ url_for('cadastrar_animal') }}" class="btn secondary">{{ icon('plus', 16) }}Cadastrar</a></div>
+        <div class="card-head"><h2>Animais</h2><a href="{{ url_for('cadastrar_animal', tutor_id=tutor.id) }}" class="btn secondary">{{ icon('plus', 16) }}Cadastrar</a></div>
         {% if tutor.animais %}
         <ul class="plain-list">
             {% for animal in tutor.animais %}
-            <li>{{ icon('paw') }}<a href="{{ url_for('editar_animal', id=animal.id) }}">{{ animal.nome }}</a><span class="muted">{{ nome_especie(animal.especie) }}, {{ animal.raca }}, {{ 'macho' if animal.sexo == 'macho' else 'fêmea' }}</span></li>
+            <li>{{ icon('paw') }}
+                <div class="who">
+                    <a href="{{ url_for('editar_animal', id=animal.id) }}">{{ animal.nome }}</a>
+                    <span class="muted small">{{ nome_especie(animal.especie) }} · {{ nome_sexo(animal.sexo) }} · {{ animal.raca }}</span>
+                </div>
+                <a class="btn-link push" href="{{ url_for('agendamentos', tutor_id=tutor.id, animal_id=animal.id) }}">{{ icon('calendar', 14) }}Agendar</a>
+            </li>
             {% endfor %}
         </ul>
         {% else %}<div class="empty"><p>Nenhum animal cadastrado.</p></div>{% endif %}
@@ -31,7 +37,12 @@
         {% if tutor.documentos %}
         <ul class="plain-list">
             {% for doc in tutor.documentos %}
-            <li>{{ icon('file') }}<a href="{{ url_for('baixar_documento', id=doc.id) }}">{{ doc.nome_arquivo }}</a></li>
+            <li>{{ icon('file') }}<a href="{{ url_for('ver_documento', id=doc.id) }}">{{ doc.nome_arquivo }}</a>
+                <span class="push doc-actions">
+                    <a class="btn-link" href="{{ url_for('ver_documento', id=doc.id) }}">{{ icon('eye', 14) }}Ver</a>
+                    <a class="btn-link" href="{{ url_for('baixar_documento', id=doc.id, baixar=1) }}">{{ icon('download', 14) }}Baixar</a>
+                </span>
+            </li>
             {% endfor %}
         </ul>
         {% else %}<div class="empty"><p>Nenhum documento anexado.</p></div>{% endif %}

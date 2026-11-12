@@ -19,7 +19,11 @@ os.environ.update(
     SUPABASE_PUBLISHABLE_KEY='sb_publishable_test',
 )
 
-from app import AUTH, Animal, Tutor, Usuario, app, db, hash_senha, ler_animal, ler_tutor, usuario_por_email
+from datetime import time, timedelta
+
+from agenda_regras import hoje
+from app import (AUTH, Agendamento, Animal, Documento, Tutor, Usuario, app, db, hash_senha, ler_animal, ler_tutor,
+                 usuario_por_email)
 from supabase_auth import EmailConfirmationRequired, InvalidCredentials
 
 
@@ -85,40 +89,170 @@ class AppAuthTests(unittest.TestCase):
         _, error = ler_animal(fields)
         self.assertIsNotNone(error)
 
-    def test_animal_species_and_searchable_tutor_picker_render(self):
+    def _login(self):
         user = Usuario(nome='ana', senha_hash=hash_senha('senha forte 123'))
-        tutor = Tutor(nome_completo='Maria de Souza', telefone='11999999999',
-                      endereco='Rua de teste', numero='1')
-        tutor.definir_cpf('12345678909')
-        db.session.add_all([user, tutor])
+        db.session.add(user)
         db.session.commit()
         with self.client.session_transaction() as session:
             session['usuario_id'] = user.id
             session['csrf'] = 'test-csrf'
 
-        response = self.client.get('/cadastrar_animal')
+    def _tutor(self, nome='Maria de Souza', cpf='12345678909'):
+        tutor = Tutor(nome_completo=nome, telefone='11999999999', endereco='Rua de teste', numero='1')
+        tutor.definir_cpf(cpf)
+        db.session.add(tutor)
+        db.session.commit()
+        return tutor
 
+    def _animal(self, tutor, nome, especie, sexo):
+        animal = Animal(nome=nome, especie=especie, raca='SRD', sexo=sexo, tutor_id=tutor.id)
+        db.session.add(animal)
+        db.session.commit()
+        return animal
+
+    def _proximo_dia_util(self):
+        dia = hoje() + timedelta(days=1)
+        while dia.weekday() >= 5:
+            dia += timedelta(days=1)
+        return dia
+
+    def _agendar(self, animal, dia, hora):
+        return self.client.post('/agendar', data={'csrf_token': 'test-csrf', 'animal_id': str(animal.id),
+                                                  'data': dia.isoformat(), 'hora': hora})
+
+    def test_animal_registration_first_picks_tutor_then_shows_form(self):
+        tutor = self._tutor()
+        self._login()
+
+        response = self.client.get('/cadastrar_animal')
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'placeholder="Digite o nome ou CPF para buscar"', response.data)
-        self.assertIn(b'<option value="cao">C\xc3\xa3o</option>', response.data)
-        self.assertIn(b'<option value="gato">Gato</option>', response.data)
-        self.assertNotIn(b'size="5"', response.data)
+        self.assertIn(b'placeholder="Digite o nome ou o CPF do tutor"', response.data)
+        self.assertIn(b'Maria de Souza', response.data)
+        self.assertNotIn(b'name="especie"', response.data)
+
+        response = self.client.get(f'/cadastrar_animal?tutor_id={tutor.id}')
+        self.assertIn(b'name="especie" id="especie-cao" value="cao"', response.data)
+        self.assertIn(b'name="especie" id="especie-gato" value="gato"', response.data)
 
         response = self.client.post('/cadastrar_animal', data={
-            'csrf_token': 'test-csrf',
-            'tutor_id': str(tutor.id),
-            'nome': 'Mimi',
-            'especie': 'gato',
-            'raca': 'SRD',
-            'sexo': 'femea',
-            'microchip': '',
+            'csrf_token': 'test-csrf', 'tutor_id': str(tutor.id), 'nome': 'Mimi',
+            'especie': 'gato', 'raca': 'SRD', 'sexo': 'femea', 'microchip': '',
         })
-
         self.assertEqual(response.status_code, 302)
         animal = Animal.query.one()
         self.assertEqual(animal.especie, 'gato')
         response = self.client.get(f'/animal/{animal.id}')
         self.assertIn(b'Esp\xc3\xa9cie: Gato', response.data)
+
+    def test_tutor_search_api_filters_by_name_and_cpf(self):
+        self._tutor('Maria de Souza', '12345678909')
+        self._tutor('Joao Pereira', '98765432100')
+        self._login()
+        nomes = [t['nome'] for t in self.client.get('/api/tutores?q=joao').get_json()['tutores']]
+        self.assertEqual(nomes, ['Joao Pereira'])
+        nomes = [t['nome'] for t in self.client.get('/api/tutores?q=123.456').get_json()['tutores']]
+        self.assertEqual(nomes, ['Maria de Souza'])
+        self.assertEqual(len(self.client.get('/api/tutores').get_json()['tutores']), 2)
+
+    def test_schedule_follows_fixed_times_and_vacancies(self):
+        tutor = self._tutor()
+        gata1, gata2, gata3 = (self._animal(tutor, f'Gata{i}', 'gato', 'femea') for i in range(3))
+        cadela = self._animal(tutor, 'Luna', 'cao', 'femea')
+        cao = self._animal(tutor, 'Rex', 'cao', 'macho')
+        gato = self._animal(tutor, 'Tom', 'gato', 'macho')
+        self._login()
+        dia = self._proximo_dia_util()
+
+        self._agendar(gata1, dia, '08:00')
+        self._agendar(gata2, dia, '08:00')
+        self._agendar(gata3, dia, '08:00')  # terceira gata: não cabe
+        self.assertEqual(Agendamento.query.filter_by(hora=time(8, 0)).count(), 2)
+
+        self._agendar(cadela, dia, '08:00')  # cadela às 8:00: horário só de gatas
+        self.assertEqual(Agendamento.query.filter_by(animal_id=cadela.id).count(), 0)
+
+        self._agendar(cao, dia, '10:00')  # fora da grade
+        self.assertEqual(Agendamento.query.filter_by(animal_id=cao.id).count(), 0)
+
+        self._agendar(gato, dia, '08:30')
+        self.assertEqual(Agendamento.query.filter_by(animal_id=gato.id).count(), 1)
+
+        self._agendar(cadela, dia, '14:30')
+        self.assertEqual(Agendamento.query.filter_by(animal_id=cadela.id).count(), 1)
+
+    def test_animal_cannot_have_two_future_bookings_and_cancel_frees_the_spot(self):
+        tutor = self._tutor()
+        cadela = self._animal(tutor, 'Luna', 'cao', 'femea')
+        outra = self._animal(tutor, 'Bela', 'cao', 'femea')
+        self._login()
+        dia = self._proximo_dia_util()
+
+        self._agendar(cadela, dia, '09:30')
+        self._agendar(cadela, dia, '13:00')  # a mesma cadela de novo: recusado
+        self.assertEqual(Agendamento.query.count(), 1)
+        self._agendar(outra, dia, '09:30')  # horário de 1 vaga já ocupado
+        self.assertEqual(Agendamento.query.count(), 1)
+
+        agendamento = Agendamento.query.one()
+        response = self.client.post(f'/agendamentos/{agendamento.id}/cancelar', data={'csrf_token': 'test-csrf'})
+        self.assertEqual(response.status_code, 302)
+        self._agendar(outra, dia, '09:30')
+        self.assertEqual(Agendamento.query.one().animal_id, outra.id)
+
+    def test_weekend_and_past_dates_are_refused(self):
+        tutor = self._tutor()
+        cadela = self._animal(tutor, 'Luna', 'cao', 'femea')
+        self._login()
+        sabado = hoje() + timedelta(days=(5 - hoje().weekday()) % 7 or 7)
+        self._agendar(cadela, sabado, '09:30')
+        self._agendar(cadela, hoje() - timedelta(days=1), '09:30')
+        self.assertEqual(Agendamento.query.count(), 0)
+
+    def test_home_shows_only_today_and_calendar_shows_other_days(self):
+        tutor = self._tutor('Maria de Souza')
+        gata = self._animal(tutor, 'Mimi', 'gato', 'femea')
+        cadela = self._animal(tutor, 'Luna', 'cao', 'femea')
+        db.session.add_all([Agendamento(data=hoje(), hora=time(8, 0), animal_id=gata.id),
+                            Agendamento(data=hoje() + timedelta(days=3), hora=time(9, 30), animal_id=cadela.id)])
+        db.session.commit()
+        self._login()
+
+        inicio = self.client.get('/').data.decode()
+        if hoje().weekday() < 5:
+            self.assertIn('Mimi', inicio)
+        self.assertNotIn('Luna', inicio)
+
+        futuro = hoje() + timedelta(days=3)
+        pagina = self.client.get(f'/calendario?mes={futuro:%Y-%m}&dia={futuro.isoformat()}')
+        self.assertEqual(pagina.status_code, 200)
+        texto = pagina.data.decode()
+        if futuro.weekday() < 5:
+            self.assertIn('Luna', texto)
+            self.assertIn(f'/animal/{cadela.id}', texto)
+            self.assertIn(f'/tutor/{tutor.id}', texto)
+
+    def test_document_is_stored_encrypted_and_viewable(self):
+        import io
+        tutor = self._tutor()
+        self._login()
+        conteudo = b'%PDF-1.4 conteudo secreto'
+        response = self.client.post(f'/tutor/{tutor.id}', data={
+            'csrf_token': 'test-csrf', 'nome': tutor.nome_completo, 'telefone': '11999999999',
+            'cpf': '12345678909', 'endereco': 'Rua de teste', 'numero': '1',
+            'documentos': (io.BytesIO(conteudo), 'rg.pdf')}, content_type='multipart/form-data')
+        self.assertEqual(response.status_code, 200)
+        doc = Documento.query.one()
+        self.assertNotIn(b'conteudo secreto', bytes(doc.conteudo))
+
+        pagina = self.client.get(f'/documento/{doc.id}/ver')
+        self.assertEqual(pagina.status_code, 200)
+        self.assertIn(b'<iframe', pagina.data)
+        arquivo = self.client.get(f'/documento/{doc.id}')
+        self.assertEqual(arquivo.data, conteudo)
+        self.assertEqual(arquivo.headers['X-Frame-Options'], 'SAMEORIGIN')
+        baixar = self.client.get(f'/documento/{doc.id}?baixar=1')
+        self.assertIn('attachment', baixar.headers['Content-Disposition'])
+        self.assertEqual(self.client.get('/').headers['X-Frame-Options'], 'DENY')
 
     def test_empty_app_redirects_to_login(self):
         response = self.client.get('/')

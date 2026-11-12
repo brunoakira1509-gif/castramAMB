@@ -1,0 +1,24 @@
+{% from "_icons.html" import icon %}
+{#- Passo "Escolha o tutor": busca por nome ou CPF e lista de resultados clicáveis.
+    Variáveis: acao (nome da rota), busca, itens, total, limite, extras (parâmetros a manter na URL). -#}
+{% set extras = extras or {} %}
+<form method="GET" action="{{ url_for(acao) }}" class="pick-search" role="search">
+    {% for chave, valor in extras.items() %}<input type="hidden" name="{{ chave }}" value="{{ valor }}">{% endfor %}
+    <input type="search" name="q" id="tutor-busca" value="{{ busca }}" placeholder="Digite o nome ou o CPF do tutor"
+           autocomplete="off" autofocus aria-label="Buscar tutor"
+           data-tutor-live data-endpoint="{{ url_for('api_tutores') }}" data-target="lista-tutores"
+           data-href="{{ url_for(acao, tutor_id='__ID__', **extras) }}">
+    <button type="submit" class="btn">{{ icon('search') }}Buscar</button>
+</form>
+<div class="pick-list" id="lista-tutores" aria-live="polite">
+    {% for t in itens %}
+    <a class="pick" href="{{ url_for(acao, tutor_id=t.id, **extras) }}">
+        <span class="pick-name">{{ t.nome }}</span>
+        <span class="pick-meta">{{ t.detalhe }}</span>
+    </a>
+    {% else %}
+    <p class="empty-inline">Nenhum tutor encontrado{% if busca %} para “{{ busca }}”{% endif %}.</p>
+    {% endfor %}
+</div>
+{% if total > itens|length %}<p class="hint">Mostrando {{ itens|length }} de {{ total }} tutores. Digite parte do nome ou do CPF para filtrar.</p>{% endif %}
+<p class="hint">Não encontrou? <a href="{{ url_for('cadastrar_tutor') }}">Cadastrar novo tutor</a></p>

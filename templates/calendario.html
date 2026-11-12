@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_agenda.html" import grade_dia %}
+{% block title %}Calendário{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Calendário</h1>
+        <p class="muted">Escolha um dia para ver os horários, os animais e os tutores. Dias anteriores ficam como registro.</p>
+    </div>
+    <a class="btn" href="{{ url_for('agendamentos') }}">{{ icon('plus') }}Novo agendamento</a>
+</div>
+
+<section class="card">
+    <div class="cal-nav">
+        <a class="icon-btn" href="{{ url_for('calendario', mes=mes_anterior) }}" aria-label="Mês anterior">{{ icon('chev-left', 20) }}</a>
+        <h2>{{ nome_mes }} de {{ ano }}</h2>
+        <a class="icon-btn" href="{{ url_for('calendario', mes=mes_seguinte) }}" aria-label="Próximo mês">{{ icon('chev-right', 20) }}</a>
+        <a class="btn secondary" href="{{ url_for('calendario', mes=mes_atual, dia=hoje.isoformat()) }}">Hoje</a>
+    </div>
+    <div class="cal-grid">
+        {% for nome in DIAS_CURTOS %}<div class="cal-dow{% if loop.index > 5 %} fim{% endif %}">{{ nome }}</div>{% endfor %}
+        {% for semana in semanas %}{% for d in semana %}
+        {% set resumo = resumos.get(d) %}
+        <a class="cal-day{% if d.month != mes %} out{% endif %}{% if d.weekday() >= 5 %} weekend{% endif %}{% if d == hoje %} today{% endif %}{% if d == dia %} selected{% endif %}{% if d < hoje %} past{% endif %}"
+           href="{{ url_for('calendario', mes='%d-%02d' % (d.year, d.month), dia=d.isoformat()) }}"
+           aria-label="{{ data_extensa(d) }}{% if resumo %}, {{ resumo.total }} agendamento(s){% endif %}"{% if d == dia %} aria-current="date"{% endif %}>
+            <span class="cal-num">{{ d.day }}</span>
+            {% if resumo %}
+            <span class="cal-count">{{ resumo.total }}</span>
+            <span class="cal-chips">
+                {% for e in resumo.etiquetas %}<span class="chip{% if e.cheio %} full{% endif %}">{{ e.hora }}{% if e.limite %} · {{ e.n }}/{{ e.limite }}{% endif %}</span>{% endfor %}
+            </span>
+            {% endif %}
+        </a>
+        {% endfor %}{% endfor %}
+    </div>
+    <p class="hint">Em cada dia: o horário e quantas vagas já foram usadas (ex.: 08:00 · 1/2); amarelo = horário lotado. No celular aparece só o total de animais do dia.</p>
+</section>
+
+<section class="card flush" id="dia">
+    <div class="card-head">
+        <div>
+            <h2>{{ data_extensa(dia) }}</h2>
+            <p class="muted small">
+                {% if dia == hoje %}Hoje{% elif dia < hoje %}Registro anterior{% else %}Próximo dia{% endif %}
+                {% if util %}· {{ grade.total }} {{ 'animal agendado' if grade.total == 1 else 'animais agendados' }}{% endif %}
+            </p>
+        </div>
+        {% if util and dia >= hoje %}<a class="btn secondary" href="{{ url_for('agendamentos', data=dia.isoformat()) }}">{{ icon('plus', 16) }}Agendar neste dia</a>{% endif %}
+    </div>
+    {% if not util %}
+    <div class="empty left"><p>Sábado e domingo não têm atendimento.</p></div>
+    {% else %}
+    {{ grade_dia(grade, dia, hoje, voltar) }}
+    {% endif %}
+</section>
+{% endblock %}
