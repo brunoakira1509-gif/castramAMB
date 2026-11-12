@@ -11,32 +11,39 @@ Este é um sistema web para organizar o serviço móvel de castração de animai
 - **Início** mostra só a agenda de hoje; a aba **Calendário** mostra o mês inteiro, dias futuros e registros anteriores.
 - Perfis de tutor e de animal (com histórico de agendamentos) acessíveis por clique em qualquer agenda.
 - Anexos dos tutores com visualização dentro do sistema (PDF e imagens).
-- **Atendimento**: tela para a equipe no local ver quem está agendado no dia (animal, espécie, sexo, tutor, telefone)
+- **Atendimento** (interface Veterinário): tela para ver quem está agendado no dia (animal, espécie, sexo, tutor, telefone)
   e marcar **Presente** ou **Faltou**. Feita para o celular.
-- Perfis de acesso: **admin** (sistema todo) e **campo** (só a tela Atendimento).
+- Duas interfaces: **Administração** (cadastros, agendamentos, relatórios) e **Veterinário** (atendimento, calendário e
+  fichas só de leitura, com edição do microchip). Botão **Trocar para ...** no menu lateral.
 - Relatório **AnimallTAG (CSV)** com tutor e microchip dos animais do período.
 - Interface adaptada ao celular: barra de atalhos na parte de baixo, botões grandes e listas em cartões.
 - Geração de relatórios em Excel para agendas mensais ou diárias.
 
-## Perfis: admin e campo
+## Perfis e interfaces
 
-| Perfil | O que acessa |
+| Conta (`perfil`) | O que acessa |
 |---|---|
-| `admin` | Tudo: início, calendário, atendimento, agendamentos, cadastros, relatórios |
-| `campo` | Só **Atendimento** (e alterar a própria senha). Vê nome do animal, espécie, sexo, raça, microchip, nome e telefone do tutor. Não vê CPF, endereço, documentos nem outros menus. |
+| `admin` | As **duas** interfaces, com o botão **Trocar para Veterinário / Administração** no menu lateral. |
+| `veterinario` | Só a interface **Veterinário**. Não tem o botão de trocar (não consegue entrar na Administração). |
 
-- Quem já existia antes desta versão continua `admin` (o `supabase_schema.sql` faz isso).
-- **Contas novas entram como `campo`** no primeiro login (menor acesso por padrão).
-- Para mudar: `python usuarios.py perfil EMAIL admin` (ou `campo`). `python usuarios.py criar NOME campo` cria direto como campo.
+| Interface | Telas |
+|---|---|
+| **Administração** | Início, Calendário, Novo agendamento, Relatórios, cadastro/busca/edição de tutores e animais, cancelar agendamentos. **Não tem** a aba Atendimento. |
+| **Veterinário** | **Atendimento** (marcar Presente/Faltou), **Calendário** (só leitura), ficha do **animal** e do **tutor** (só leitura; documentos anexados não aparecem). Única edição permitida: o **número do microchip** do animal. |
+
+- Quem já existia continua `admin` (o `supabase_schema.sql` faz isso). O perfil antigo `campo` virou `veterinario`.
+- **Contas novas entram como `veterinario`** no primeiro login (menor acesso por padrão).
+- Para mudar: `python usuarios.py perfil EMAIL admin` (ou `veterinario`). `python usuarios.py criar NOME veterinario` cria direto como veterinário.
   `python usuarios.py listar` mostra o perfil de cada um.
-- A restrição é feita no servidor: mesmo digitando o endereço de outra página, o usuário `campo` volta ao Atendimento.
+- As restrições são feitas no servidor: mesmo digitando o endereço de outra página, o veterinário volta ao Atendimento. Um admin
+  que trocou para o modo Veterinário também fica limitado até trocar de volta.
 
 ## Atendimento e presença
 
-- Abra **Atendimento** (menu ou barra inferior no celular). Mostra o dia de hoje; as setas mudam para o dia útil anterior/seguinte.
+- Na interface Veterinário, abra **Atendimento** (menu ou barra inferior no celular). Mostra o dia de hoje; as setas mudam para o dia útil anterior/seguinte.
 - Cada animal aparece em um cartão com horário, categoria, espécie, sexo, tutor e telefone (toque para ligar).
 - **Presente** / **Faltou**: tocar de novo no botão marcado desfaz. Só é possível marcar do dia do atendimento em diante (não em dias futuros).
-- O resumo no topo mostra agendados, presentes, faltaram e aguardando. Admin também vê a presença no Início e no Calendário.
+- O resumo no topo mostra agendados, presentes, faltaram e aguardando. A Administração vê a presença no Início e no Calendário.
 
 ## Exportação para o AnimallTAG (CSV)
 

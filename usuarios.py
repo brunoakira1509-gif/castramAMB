@@ -1,11 +1,11 @@
 """Gerencia usuários pelo terminal.
 
   python usuarios.py listar
-  python usuarios.py criar NOME [campo]      (sem "campo" a conta é administradora)
-  python usuarios.py perfil NOME_OU_EMAIL admin|campo
+  python usuarios.py criar NOME [veterinario]   (sem "veterinario" a conta é administradora)
+  python usuarios.py perfil NOME_OU_EMAIL admin|veterinario
   python usuarios.py senha NOME | email NOME | remover NOME
 
-Perfis: admin vê o sistema todo; campo (equipe no local) vê só a tela Atendimento.
+Perfis: admin usa a Administração e o Veterinário (e troca entre eles); veterinario usa só a interface Veterinário.
 """
 import getpass
 import sys
@@ -55,8 +55,9 @@ def main():
         usuario = Usuario.query.filter_by(nome=nome).first()
         if comando == 'perfil':
             novo_perfil = sys.argv[3].strip().lower() if len(sys.argv) > 3 else ''
-            if novo_perfil not in ('admin', 'campo'):
-                sys.exit('Informe o perfil: admin ou campo.')
+            novo_perfil = 'veterinario' if novo_perfil == 'campo' else novo_perfil  # 'campo' é o nome antigo
+            if novo_perfil not in ('admin', 'veterinario'):
+                sys.exit('Informe o perfil: admin ou veterinario.')
             usuario = usuario or usuario_por_email(nome)  # aceita o nome de login ou o e-mail
             if not usuario:
                 sys.exit('Usuário não encontrado (o usuário precisa ter entrado ao menos uma vez).')
@@ -72,7 +73,7 @@ def main():
             if usuario_por_email(email):
                 sys.exit('Esse e-mail já está associado a um usuário.')
             autenticar_nova_conta(email, senha)
-            perfil = 'campo' if len(sys.argv) > 3 and sys.argv[3].strip().lower() == 'campo' else 'admin'
+            perfil = 'veterinario' if len(sys.argv) > 3 and sys.argv[3].strip().lower() in ('veterinario', 'campo') else 'admin'
             novo = Usuario(nome=nome, senha_hash=hash_senha(senha), perfil=perfil)
             novo.definir_email(email)
             db.session.add(novo)

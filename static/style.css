@@ -432,3 +432,26 @@ code { padding: 1px 5px; border-radius: 4px; background: #eef2f1; font-size: 0.8
     .resumo-presenca strong { font-size: 1.25rem; }
     .presenca { flex-direction: column; }
 }
+
+/* ===== Perfis (Veterinário / Administração) ===== */
+.perfil-atual { padding: 0 10px 6px; font-size: 0.8125rem; color: var(--muted); }
+.perfil-atual strong { color: var(--text); }
+.nav-link.trocar-perfil { color: var(--accent); font-weight: 600; }
+.ficha { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px 24px; margin: 0; }
+.ficha dt { font-size: 0.8125rem; font-weight: 600; color: var(--muted); }
+.ficha dd { margin: 2px 0 0; font-size: 1rem; overflow-wrap: anywhere; }
+
+/* ===== Leitor de código de barras (só celular) ===== */
+.scan-row { display: flex; gap: 8px; align-items: stretch; }
+.scan-row input { flex: 1; min-width: 0; }
+.scan-btn { white-space: nowrap; }
+.scan-btn[hidden], .scan-overlay[hidden], .scan-msg[hidden] { display: none; }
+.scan-msg { color: var(--danger); }
+.scan-overlay {
+    position: fixed; inset: 0; z-index: 100; background: #000; color: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 16px;
+}
+.scan-box { position: relative; width: 100%; max-width: 520px; aspect-ratio: 4 / 3; background: #111; border-radius: 12px; overflow: hidden; }
+.scan-box video { width: 100%; height: 100%; object-fit: cover; }
+.scan-guide { position: absolute; left: 8%; right: 8%; top: 38%; bottom: 38%; border: 2px solid #5eead4; border-radius: 8px; box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.35); }
+.scan-help { margin: 0; text-align: center; font-size: 0.9375rem; }

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ tutor.nome_completo }}{% endblock %}
+{% block content %}
+<a href="{{ url_for('atendimento') }}" class="back-link">{{ icon('back', 16) }}Atendimento</a>
+<div class="page-head"><h1>{{ tutor.nome_completo }}</h1></div>
+<section class="card">
+    <div class="card-head"><h2>Dados do tutor</h2><span class="muted small">Somente leitura</span></div>
+    <dl class="ficha">
+        <div><dt>Nome completo</dt><dd>{{ tutor.nome_completo }}</dd></div>
+        <div><dt>CPF</dt><dd>{{ tutor.cpf }}</dd></div>
+        <div><dt>Telefone</dt><dd>{% if so_digitos(tutor.telefone) %}<a class="tel" href="tel:{{ so_digitos(tutor.telefone) }}">{{ icon('phone', 16) }}{{ tutor.telefone }}</a>{% else %}{{ tutor.telefone }}{% endif %}</dd></div>
+        <div><dt>Endereço</dt><dd>{{ tutor.endereco }}, {{ tutor.numero }}</dd></div>
+    </dl>
+</section>
+<section class="card">
+    <div class="card-head"><h2>Animais</h2></div>
+    {% if tutor.animais %}
+    <ul class="plain-list">
+        {% for animal in tutor.animais %}
+        <li>{{ icon('paw') }}
+            <div class="who">
+                <a href="{{ url_for('animal_perfil', id=animal.id) }}">{{ animal.nome }}</a>
+                <span class="muted small">{{ nome_especie(animal.especie) }} · {{ nome_sexo(animal.sexo) }} · {{ animal.raca }}{% if animal.microchip %} · Microchip {{ animal.microchip }}{% endif %}</span>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}<div class="empty"><p>Nenhum animal cadastrado.</p></div>{% endif %}
+</section>
+{% endblock %}

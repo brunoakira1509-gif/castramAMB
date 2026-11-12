@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ animal.nome }}{% endblock %}
+{% block content %}
+<a href="{{ url_for('atendimento') }}" class="back-link">{{ icon('back', 16) }}Atendimento</a>
+<div class="page-head">
+    <div>
+        <h1>{{ animal.nome }}</h1>
+        <p class="muted">Tutor: <a href="{{ url_for('tutor_perfil', id=animal.tutor_id) }}">{{ animal.tutor.nome_completo }}</a></p>
+    </div>
+</div>
+
+<section class="card">
+    <div class="card-head"><h2>Dados do animal</h2><span class="muted small">Somente leitura</span></div>
+    <dl class="ficha">
+        <div><dt>Nome</dt><dd>{{ animal.nome }}</dd></div>
+        <div><dt>Espécie</dt><dd>{{ nome_especie(animal.especie) }}</dd></div>
+        <div><dt>Raça</dt><dd>{{ animal.raca }}</dd></div>
+        <div><dt>Sexo</dt><dd>{{ nome_sexo(animal.sexo) }}</dd></div>
+    </dl>
+</section>
+
+<form method="POST" action="{{ url_for('salvar_microchip', id=animal.id) }}" class="card" id="microchip">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="card-head"><h2>Microchip</h2></div>
+    <div class="field">
+        <label for="microchip-num">Número do microchip</label>
+        <div class="scan-row">
+            <input type="text" id="microchip-num" name="microchip" value="{{ animal.microchip or '' }}" maxlength="20" inputmode="numeric" autocomplete="off" placeholder="{{ 'Sem microchip' if not animal.microchip else '' }}">
+            <button type="button" class="btn secondary scan-btn" data-scan-target="microchip-num" hidden>{{ icon('scan') }}Ler código</button>
+        </div>
+        <p class="hint">Os espaços são removidos automaticamente. Deixe em branco para remover o número.</p>
+        <p class="hint scan-msg" id="scan-msg" role="status" hidden></p>
+    </div>
+    <div class="form-actions"><button type="submit" class="btn">Salvar microchip</button></div>
+</form>
+
+<section class="card flush">
+    <div class="card-head"><h2>Agendamentos</h2></div>
+    {% if historico %}
+    <div class="table-wrap">
+        <table class="table stack">
+            <thead><tr><th>Data</th><th>Hora</th><th>Situação</th></tr></thead>
+            <tbody>
+            {% for ag in historico %}
+                <tr>
+                    <td data-label="Data"><a href="{{ url_for('calendario', mes='%d-%02d' % (ag.data.year, ag.data.month), dia=ag.data.isoformat()) }}">{{ ag.data.strftime('%d/%m/%Y') }}</a></td>
+                    <td data-label="Hora">{{ hora_texto(ag.hora) }}</td>
+                    <td data-label="Situação">
+                        {% if ag.presente is sameas true %}<span class="pill ok">Presente</span>
+                        {% elif ag.presente is sameas false %}<span class="pill no">Faltou</span>
+                        {% elif ag.data >= hoje %}<span class="badge">Agendado</span>
+                        {% else %}<span class="badge empty">Registro anterior</span>{% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty left"><p>Nenhum agendamento para este animal.</p></div>
+    {% endif %}
+</section>
+<div class="scan-overlay" id="scan-overlay" role="dialog" aria-modal="true" aria-label="Ler código de barras" hidden>
+    <div class="scan-box">
+        <video id="scan-video" playsinline muted></video>
+        <div class="scan-guide" aria-hidden="true"></div>
+    </div>
+    <p class="scan-help">Aponte a câmera para o código de barras da etiqueta do microchip.</p>
+    <button type="button" class="btn secondary" id="scan-close">{{ icon('x') }}Cancelar</button>
+</div>
+{% endblock %}

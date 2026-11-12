@@ -231,20 +231,122 @@ class AppAuthTests(unittest.TestCase):
             self.assertIn(f'/animal/{cadela.id}', texto)
             self.assertIn(f'/tutor/{tutor.id}', texto)
 
-    def test_field_user_only_reaches_the_attendance_screen(self):
+    def test_vet_user_has_limited_read_only_access(self):
         tutor = self._tutor()
-        self._login('campo')
+        animal = self._animal(tutor, 'Mimi', 'gato', 'femea')
+        self._login('veterinario')
         resposta = self.client.get('/')
         self.assertEqual(resposta.status_code, 302)
         self.assertTrue(resposta.headers['Location'].endswith('/atendimento'))
-        for caminho in ('/calendario', '/agendamentos', '/procurar_tutor', f'/tutor/{tutor.id}', '/api/tutores',
-                        '/relatorios', '/gerar_csv_animalltag'):
-            self.assertEqual(self.client.get(caminho).status_code, 302, caminho)
-            self.assertTrue(self.client.get(caminho).headers['Location'].endswith('/atendimento'), caminho)
+        # administração fica fechada para o veterinário
+        for caminho in ('/agendamentos', '/procurar_tutor', '/procurar_animal', '/cadastrar_tutor',
+                        '/cadastrar_animal', f'/editar_animal/{animal.id}', '/api/tutores', '/relatorios',
+                        '/gerar_csv_animalltag', '/gerar_excel_dia'):
+            r = self.client.get(caminho)
+            self.assertEqual(r.status_code, 302, caminho)
+            self.assertTrue(r.headers['Location'].endswith('/atendimento'), caminho)
+        for caminho in ('/agendar', f'/tutor/{tutor.id}', f'/animal/{animal.id}', '/cadastrar_tutor'):
+            self.assertEqual(self.client.post(caminho, data={'csrf_token': 'test-csrf'}).status_code, 403, caminho)
+        # mas pode ler calendário, atendimento e as fichas
+        for caminho in ('/atendimento', '/calendario', f'/tutor/{tutor.id}', f'/animal/{animal.id}'):
+            self.assertEqual(self.client.get(caminho).status_code, 200, caminho)
+        pagina = self.client.get('/atendimento').data.decode()
+        self.assertNotIn('Procurar tutor', pagina)
+        self.assertNotIn('Relatórios', pagina)
+
+    def test_vet_can_only_edit_the_microchip(self):
+        tutor = self._tutor()
+        animal = self._animal(tutor, 'Mimi', 'gato', 'femea')
+        outro = self._animal(tutor, 'Rex', 'cao', 'macho')
+        outro.definir_microchip('985000000000002')
+        db.session.commit()
+        self._login('veterinario')
+
+        pagina = self.client.get(f'/animal/{animal.id}').data.decode()
+        self.assertIn(f'/animal/{animal.id}/microchip', pagina)
+        self.assertNotIn('name="nome"', pagina)  # os outros dados são só leitura
+        self.assertNotIn('name="raca"', pagina)
+        self.assertNotIn('Agendar castração', pagina)
+        self.assertIn('data-scan-target="microchip-num"', pagina)  # leitor de código de barras (aparece só no celular)
+        self.assertIn('camera=(self)', self.client.get(f'/animal/{animal.id}').headers['Permissions-Policy'])
+        ficha_tutor = self.client.get(f'/tutor/{tutor.id}').data.decode()
+        self.assertIn('Maria de Souza', ficha_tutor)
+        self.assertNotIn('name="nome"', ficha_tutor)
+        self.assertNotIn('Documentos', ficha_tutor)
+
+        def salvar(valor, extra=None):
+            dados = {'csrf_token': 'test-csrf', 'microchip': valor}
+            dados.update(extra or {})
+            return self.client.post(f'/animal/{animal.id}/microchip', data=dados)
+
+        self.assertEqual(salvar('985 112 345 678 901', {'nome': 'Hackeado', 'sexo': 'macho'}).status_code, 302)
+        db.session.refresh(animal)
+        self.assertEqual(animal.microchip, '985112345678901')
+        self.assertEqual((animal.nome, animal.sexo), ('Mimi', 'femea'))  # nada além do microchip muda
+        salvar('985000000000002')  # já usado por outro animal
+        db.session.refresh(animal)
+        self.assertEqual(animal.microchip, '985112345678901')
+        salvar('9' * 21)  # grande demais
+        db.session.refresh(animal)
+        self.assertEqual(animal.microchip, '985112345678901')
+        salvar('')
+        db.session.refresh(animal)
+        self.assertIsNone(animal.microchip)
+
+    def test_vet_calendar_is_read_only(self):
+        tutor = self._tutor()
+        gata = self._animal(tutor, 'Mimi', 'gato', 'femea')
+        dia = self._proximo_dia_util()
+        db.session.add(Agendamento(data=dia, hora=time(8, 0), animal_id=gata.id))
+        db.session.commit()
+        self._login('veterinario')
+        pagina = self.client.get(f'/calendario?mes={dia:%Y-%m}&dia={dia.isoformat()}').data.decode()
+        self.assertIn('Mimi', pagina)
+        self.assertNotIn('Cancelar', pagina)
+        self.assertNotIn('Novo agendamento', pagina)
+        self.assertNotIn('Agendar', pagina)
+        self.assertEqual(self.client.post(f'/agendamentos/{Agendamento.query.one().id}/cancelar',
+                                          data={'csrf_token': 'test-csrf'}).status_code, 403)
+        self.assertEqual(Agendamento.query.count(), 1)
+
+    def test_admin_interface_has_no_attendance_tab_and_can_switch_profile(self):
+        self._login('admin')
+        pagina = self.client.get('/').data.decode()
+        self.assertNotIn('>Atendimento<', pagina)
+        self.assertNotIn('/atendimento', pagina)
+        self.assertIn('Trocar para Veterinário', pagina)
+        r = self.client.get('/atendimento')  # a Administração não usa mais essa tela
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r.headers['Location'].endswith('/'))
+
+        r = self.client.post('/trocar_perfil', data={'csrf_token': 'test-csrf', 'modo': 'veterinario'})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r.headers['Location'].endswith('/atendimento'))
+        pagina = self.client.get('/atendimento').data.decode()
+        self.assertIn('Trocar para Administração', pagina)
+        self.assertIn('Perfil: <strong>Veterinário</strong>', pagina)
+        # no modo Veterinário o admin também fica limitado
+        self.assertEqual(self.client.get('/relatorios').status_code, 302)
         self.assertEqual(self.client.post('/agendar', data={'csrf_token': 'test-csrf'}).status_code, 403)
-        pagina = self.client.get('/atendimento')
-        self.assertEqual(pagina.status_code, 200)
-        self.assertNotIn(b'Procurar tutor', pagina.data)
+
+        r = self.client.post('/trocar_perfil', data={'csrf_token': 'test-csrf', 'modo': 'admin'})
+        self.assertTrue(r.headers['Location'].endswith('/'))
+        self.assertEqual(self.client.get('/relatorios').status_code, 200)
+        self.assertEqual(self.client.post('/trocar_perfil', data={'csrf_token': 'test-csrf', 'modo': 'x'}).status_code, 403)
+
+    def test_vet_account_cannot_switch_to_administration(self):
+        self._login('veterinario')
+        pagina = self.client.get('/atendimento').data.decode()
+        self.assertNotIn('Trocar para', pagina)
+        self.assertEqual(self.client.post('/trocar_perfil', data={'csrf_token': 'test-csrf', 'modo': 'admin'}).status_code, 403)
+        with self.client.session_transaction() as sessao:
+            sessao['modo'] = 'admin'  # mesmo forçando a sessão, o servidor ignora
+        self.assertEqual(self.client.get('/relatorios').status_code, 302)
+
+    def test_legacy_campo_profile_behaves_as_vet(self):
+        self._login('campo')
+        self.assertEqual(self.client.get('/relatorios').status_code, 302)
+        self.assertEqual(self.client.get('/atendimento').status_code, 200)
 
     def test_attendance_shows_species_tutor_and_marks_presence(self):
         tutor = self._tutor('Maria de Souza')
@@ -252,14 +354,14 @@ class AppAuthTests(unittest.TestCase):
         ag = Agendamento(data=hoje(), hora=time(8, 0), animal_id=gata.id)
         db.session.add(ag)
         db.session.commit()
-        self._login('campo')
+        self._login('veterinario')
 
         pagina = self.client.get('/atendimento').data.decode()
         self.assertIn('Mimi', pagina)
         self.assertIn('Gato', pagina)
         self.assertIn('Maria de Souza', pagina)
         self.assertIn('tel:11999999999', pagina)
-        self.assertNotIn('12345678909', pagina)  # o CPF não aparece para a equipe de campo
+        self.assertNotIn('12345678909', pagina)  # o CPF não aparece na tela de atendimento
 
         def marcar(valor):
             return self.client.post(f'/atendimento/{ag.id}/presenca',
@@ -281,7 +383,7 @@ class AppAuthTests(unittest.TestCase):
         ag = Agendamento(data=hoje() + timedelta(days=2), hora=time(8, 0), animal_id=gata.id)
         db.session.add(ag)
         db.session.commit()
-        self._login('campo')
+        self._login('veterinario')
         self.client.post(f'/atendimento/{ag.id}/presenca',
                          data={'csrf_token': 'test-csrf', 'valor': 'presente', 'voltar': '/atendimento'})
         db.session.refresh(ag)
@@ -368,9 +470,9 @@ class AppAuthTests(unittest.TestCase):
         usuario = usuario_por_email('ana@example.com')
         self.assertIsNotNone(usuario)
         self.assertEqual(usuario.nome, 'supabase_67e5504410b1426f9247bb680e5fe0c8')
-        self.assertEqual(usuario.perfil, 'campo')  # contas novas começam com o menor acesso
+        self.assertEqual(usuario.perfil, 'veterinario')  # contas novas começam com o menor acesso
         sign_in.assert_called_once_with('ana@example.com', 'senha forte 123')
-        response = self.client.get('/', follow_redirects=True)  # conta nova (campo) cai na tela Atendimento
+        response = self.client.get('/', follow_redirects=True)  # conta nova (veterinário) cai na tela Atendimento
         self.assertIn(b'Conectado como ana@example.com', response.data)
 
     def test_unconfirmed_supabase_email_shows_confirmation_message(self):

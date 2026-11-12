@@ -8,7 +8,7 @@
         <h1>Calendário</h1>
         <p class="muted">Escolha um dia para ver os horários, os animais e os tutores. Dias anteriores ficam como registro.</p>
     </div>
-    <a class="btn" href="{{ url_for('agendamentos') }}">{{ icon('plus') }}Novo agendamento</a>
+    {% if editar %}<a class="btn" href="{{ url_for('agendamentos') }}">{{ icon('plus') }}Novo agendamento</a>{% endif %}
 </div>
 
 <section class="card">
@@ -47,12 +47,12 @@
                 {% if util %}· {{ grade.total }} {{ 'animal agendado' if grade.total == 1 else 'animais agendados' }}{% endif %}
             </p>
         </div>
-        {% if util and dia >= hoje %}<a class="btn secondary" href="{{ url_for('agendamentos', data=dia.isoformat()) }}">{{ icon('plus', 16) }}Agendar neste dia</a>{% endif %}
+        {% if editar and util and dia >= hoje %}<a class="btn secondary" href="{{ url_for('agendamentos', data=dia.isoformat()) }}">{{ icon('plus', 16) }}Agendar neste dia</a>{% endif %}
     </div>
     {% if not util %}
     <div class="empty left"><p>Sábado e domingo não têm atendimento.</p></div>
     {% else %}
-    {{ grade_dia(grade, dia, hoje, voltar) }}
+    {{ grade_dia(grade, dia, hoje, voltar, editar) }}
     {% endif %}
 </section>
 {% endblock %}

@@ -92,3 +92,74 @@
         });
     });
 })();
+
+
+// Leitor de código de barras (celular): preenche o número do microchip com a câmera.
+// Usa o BarcodeDetector do navegador (Chrome/Edge no Android). Exige HTTPS (ou localhost) e permissão da câmera.
+(function () {
+    var botao = document.querySelector('[data-scan-target]');
+    if (!botao) return;
+    var celular = window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(max-width: 860px)').matches;
+    var suportado = 'BarcodeDetector' in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext;
+    var msg = document.getElementById('scan-msg');
+    function aviso(texto) { if (msg) { msg.textContent = texto; msg.hidden = !texto; } }
+    if (!celular) return;
+    botao.hidden = false;
+    var alvo = document.getElementById(botao.dataset.scanTarget);
+    var overlay = document.getElementById('scan-overlay');
+    var video = document.getElementById('scan-video');
+    var fluxo = null, ativo = false;
+
+    function parar() {
+        ativo = false;
+        if (fluxo) { fluxo.getTracks().forEach(function (t) { t.stop(); }); fluxo = null; }
+        video.srcObject = null;
+        overlay.hidden = true;
+    }
+
+    function limpar(valor) { return String(valor || '').replace(/\s+/g, '').toUpperCase(); }
+
+    botao.addEventListener('click', function () {
+        aviso('');
+        if (!suportado) {
+            aviso(window.isSecureContext
+                ? 'Este navegador não lê código de barras. Use o Chrome no Android ou digite o número.'
+                : 'A câmera só funciona em conexão segura (HTTPS). Digite o número ou abra o sistema pelo endereço https.');
+            return;
+        }
+        var pedido = BarcodeDetector.getSupportedFormats ? BarcodeDetector.getSupportedFormats() : Promise.resolve([]);
+        pedido.then(function (formatos) {
+            var desejados = ['code_128', 'code_39', 'ean_13', 'itf', 'codabar', 'data_matrix', 'qr_code'];
+            var usar = formatos.length ? desejados.filter(function (f) { return formatos.indexOf(f) !== -1; }) : desejados;
+            var detector = new BarcodeDetector(usar.length ? { formats: usar } : undefined);
+            return navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+                .then(function (stream) {
+                    fluxo = stream; ativo = true;
+                    video.srcObject = stream;
+                    overlay.hidden = false;
+                    return video.play();
+                }).then(function () {
+                    (function ler() {
+                        if (!ativo) return;
+                        detector.detect(video).then(function (codigos) {
+                            var achado = codigos.map(function (c) { return limpar(c.rawValue); }).filter(Boolean)[0];
+                            if (achado) {
+                                alvo.value = achado.slice(0, alvo.maxLength > 0 ? alvo.maxLength : 20);
+                                if (achado.length > (alvo.maxLength > 0 ? alvo.maxLength : 20)) aviso('O código lido é maior que um microchip. Confira o número antes de salvar.');
+                                parar();
+                                if (navigator.vibrate) navigator.vibrate(80);
+                                alvo.focus();
+                            } else { setTimeout(ler, 150); }
+                        }).catch(function () { setTimeout(ler, 300); });
+                    })();
+                });
+        }).catch(function (erro) {
+            parar();
+            aviso(erro && erro.name === 'NotAllowedError'
+                ? 'Permissão da câmera negada. Libere a câmera nas configurações do navegador.'
+                : 'Não foi possível abrir a câmera. Digite o número do microchip.');
+        });
+    });
+    document.getElementById('scan-close').addEventListener('click', parar);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && ativo) parar(); });
+})();

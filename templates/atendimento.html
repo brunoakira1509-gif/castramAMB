@@ -5,7 +5,7 @@
 {% macro cartao(ag, pode_marcar, voltar, mostrar_hora=False) %}
 <article class="atend-card{% if ag.presente is sameas true %} is-presente{% elif ag.presente is sameas false %} is-faltou{% endif %}" id="ag-{{ ag.id }}">
     <header class="atend-head">
-        <h3>{% if mostrar_hora %}<span class="muted">{{ hora_texto(ag.hora) }} ·</span> {% endif %}{{ ag.animal.nome }}</h3>
+        <h3>{% if mostrar_hora %}<span class="muted">{{ hora_texto(ag.hora) }} ·</span> {% endif %}<a href="{{ url_for('animal_perfil', id=ag.animal.id) }}">{{ ag.animal.nome }}</a></h3>
         <div class="tags">
             <span class="tag {{ ag.animal.especie }}">{{ nome_especie(ag.animal.especie) }}</span>
             <span class="tag sexo-{{ ag.animal.sexo }}">{{ nome_sexo(ag.animal.sexo) }}</span>
@@ -14,6 +14,7 @@
     {% if ag.animal.raca or ag.animal.microchip %}
     <p class="muted atend-line">{{ ag.animal.raca }}{% if ag.animal.microchip %}{% if ag.animal.raca %} · {% endif %}Microchip {{ ag.animal.microchip }}{% endif %}</p>
     {% endif %}
+    {% if not ag.animal.microchip %}<p class="atend-line"><a class="btn-link" href="{{ url_for('animal_perfil', id=ag.animal.id) }}#microchip">{{ icon('plus', 14) }}Adicionar microchip</a></p>{% endif %}
     <p class="atend-line atend-tutor">
         <span class="muted">Tutor</span>
         <strong>{{ ag.animal.tutor.nome_completo }}</strong>

@@ -79,9 +79,14 @@ class Usuario(db.Model):
     nome = db.Column(db.String(50), unique=True, nullable=False)
     senha_hash = db.Column(db.String(255), nullable=False)
     email = db.Column(enc('usuario.email'), nullable=True)
-    # 'admin' vê o sistema todo; 'campo' (equipe no local) só vê a tela Atendimento.
-    # Contas novas entram como 'campo' (menor acesso); quem já existia ficou 'admin' pelo supabase_schema.sql.
-    perfil = db.Column(db.String(20), nullable=False, default='campo', server_default='admin')
+    # 'admin' pode usar as duas interfaces (Administração e Veterinário) e trocar entre elas.
+    # 'veterinario' só usa a interface Veterinário (acesso limitado). O valor antigo 'campo' equivale a 'veterinario'.
+    # Contas novas entram como 'veterinario' (menor acesso); quem já existia ficou 'admin' pelo supabase_schema.sql.
+    perfil = db.Column(db.String(20), nullable=False, default='veterinario', server_default='admin')
+
+    @property
+    def e_admin(self):
+        return self.perfil == 'admin'
 
     def definir_email(self, email):
         self.email = email.strip().lower()
@@ -274,7 +279,30 @@ def destino_seguro(destino):
     return url_for('index')
 
 
-ROTAS_CAMPO = {'atendimento', 'marcar_presenca', 'alterar_senha', 'logout'}  # o que a equipe de campo pode abrir
+MODO_ADMIN, MODO_VET = 'admin', 'veterinario'
+NOMES_MODO = {MODO_ADMIN: 'Administração', MODO_VET: 'Veterinário'}
+
+# Interface Veterinário: só estas rotas (e só com estes métodos). Tudo o mais é negado no servidor.
+ROTAS_VET = {
+    'atendimento': {'GET'}, 'marcar_presenca': {'POST'},   # atendimento do dia e presença
+    'calendario': {'GET'},                                   # calendário só para ler
+    'animal_perfil': {'GET'}, 'tutor_perfil': {'GET'},       # fichas só para ler
+    'salvar_microchip': {'POST'},                            # única edição permitida: o microchip
+    'alterar_senha': {'GET', 'POST'}, 'logout': {'POST'}, 'trocar_perfil': {'POST'},
+}
+# Rotas que pertencem só à interface Veterinário (a Administração não usa mais o Atendimento).
+ROTAS_SO_VET = {'atendimento', 'marcar_presenca', 'salvar_microchip'}
+
+
+def modo_do_usuario(usuario):
+    """Interface em uso. Quem não é admin está sempre no modo Veterinário; o admin escolhe e troca pelo botão."""
+    if usuario is None or not usuario.e_admin:
+        return MODO_VET
+    return session.get('modo') if session.get('modo') in NOMES_MODO else MODO_ADMIN
+
+
+def pagina_inicial(modo):
+    return url_for('atendimento' if modo == MODO_VET else 'index')
 
 
 @app.before_request
@@ -283,11 +311,17 @@ def exigir_login():
     if endpoint is None or endpoint == 'static':
         return None
     g.usuario = db.session.get(Usuario, session['usuario_id']) if session.get('usuario_id') else None
+    g.modo = modo_do_usuario(g.usuario)
     if g.usuario:
         if endpoint == 'login':
-            return redirect(url_for('index'))
-        if g.usuario.perfil == 'campo' and endpoint not in ROTAS_CAMPO:
-            return redirect(url_for('atendimento')) if request.method == 'GET' else abort(403)
+            return redirect(pagina_inicial(g.modo))
+        metodo = 'GET' if request.method == 'HEAD' else request.method
+        if g.modo == MODO_VET:
+            permitido = metodo in ROTAS_VET.get(endpoint, ())
+        else:
+            permitido = endpoint not in ROTAS_SO_VET
+        if not permitido:
+            return redirect(pagina_inicial(g.modo)) if metodo == 'GET' else abort(403)
         return None
     if endpoint != 'login':
         session.clear()
@@ -306,7 +340,7 @@ def cabecalhos(resposta):
     # Só o arquivo do documento pode ser exibido dentro da própria página do sistema (pré-visualização de PDF).
     resposta.headers['X-Frame-Options'] = 'SAMEORIGIN' if request.endpoint == 'baixar_documento' else 'DENY'
     resposta.headers['Referrer-Policy'] = 'no-referrer'
-    resposta.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+    resposta.headers['Permissions-Policy'] = 'camera=(self), microphone=(), geolocation=()'  # câmera só para ler o código do microchip
     resposta.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
     if resposta.mimetype == 'text/html':
         resposta.headers['Content-Security-Policy'] = CSP
@@ -320,7 +354,12 @@ def cabecalhos(resposta):
 
 @app.context_processor
 def contexto():
-    return {'usuario_atual': g.get('usuario')}
+    usuario = g.get('usuario')
+    modo = g.get('modo', MODO_ADMIN)
+    outro = MODO_VET if modo == MODO_ADMIN else MODO_ADMIN
+    return {'usuario_atual': usuario, 'modo': modo, 'nome_modo': NOMES_MODO[modo],
+            'pode_trocar': bool(usuario and usuario.e_admin), 'outro_modo': outro,
+            'nome_outro_modo': NOMES_MODO[outro]}
 
 
 MENSAGENS_ERRO = {
@@ -475,6 +514,16 @@ def logout():
     return redirect(url_for('login'))
 
 
+@app.route('/trocar_perfil', methods=['POST'])
+def trocar_perfil():
+    """Alterna entre Administração e Veterinário. Só contas admin podem; o veterinário puro não sobe de nível."""
+    novo = request.form.get('modo')
+    if novo not in NOMES_MODO or not g.usuario.e_admin:
+        abort(403)
+    session['modo'] = novo
+    return redirect(pagina_inicial(novo))
+
+
 @app.route('/alterar_senha', methods=['GET', 'POST'])
 def alterar_senha():
     if request.method == 'POST':
@@ -493,7 +542,7 @@ def alterar_senha():
                 flash(mensagem_de_erro_auth(exc), 'error')
             else:
                 flash('Senha alterada.', 'success')
-                return redirect(url_for('index'))
+                return redirect(pagina_inicial(g.modo))
     return render_template('alterar_senha.html')
 
 
@@ -674,7 +723,7 @@ def calendario():
                            grade=montar_grade(por_dia.get(dia, [])), voltar=voltar_para(),
                            mes_anterior=f'{anterior[0]}-{anterior[1]:02d}',
                            mes_seguinte=f'{seguinte[0]}-{seguinte[1]:02d}',
-                           mes_atual=f'{hj.year}-{hj.month:02d}')
+                           mes_atual=f'{hj.year}-{hj.month:02d}', editar=g.modo == MODO_ADMIN)
 
 
 @app.route('/api/tutores')
@@ -748,6 +797,8 @@ def procurar_tutor():
 @app.route('/tutor/<int:id>', methods=['GET', 'POST'])
 def tutor_perfil(id):
     tutor = db.get_or_404(Tutor, id)
+    if g.modo == MODO_VET:  # veterinário: só leitura, sem documentos anexados
+        return render_template('tutor_vet.html', tutor=tutor)
     if request.method == 'POST':
         dados, erro = ler_tutor(request.form)
         if not erro:
@@ -813,10 +864,31 @@ def procurar_animal():
 @app.route('/animal/<int:id>', methods=['GET', 'POST'])
 def animal_perfil(id):
     animal = db.get_or_404(Animal, id)
+    if g.modo == MODO_VET:  # veterinário: só leitura, exceto o formulário do microchip
+        return render_template('animal_vet.html', animal=animal, historico=historico_do_animal(animal))
     if request.method == 'POST':
         salvar_animal(animal)
     return render_template('animal_perfil.html', animal=animal, historico=historico_do_animal(animal),
                            voltar=voltar_para())
+
+
+@app.route('/animal/<int:id>/microchip', methods=['POST'])
+def salvar_microchip(id):
+    """Único dado do animal que o veterinário pode alterar: adicionar, trocar ou apagar o microchip."""
+    animal = db.get_or_404(Animal, id)
+    valor = request.form.get('microchip', '').strip()
+    if len(valor) > 20:
+        flash('O microchip ultrapassa o tamanho permitido.', 'error')
+    else:
+        animal.definir_microchip(valor)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash('Já existe outro animal com esse microchip.', 'error')
+        else:
+            flash('Microchip salvo.' if animal.microchip else 'Microchip removido.', 'success')
+    return redirect(url_for('animal_perfil', id=animal.id))
 
 
 @app.route('/agendamentos')
@@ -906,7 +978,7 @@ def cancelar_agendamento(id):
 
 
 # ---------------------------------------------------------------------------
-# Atendimento (equipe no local): quem está agendado no dia e marcação de presença
+# Atendimento (interface Veterinário): quem está agendado no dia e marcação de presença
 # ---------------------------------------------------------------------------
 @app.route('/atendimento')
 def atendimento():

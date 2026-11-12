@@ -1,15 +1,17 @@
 {% from "_icons.html" import icon %}
-{% set campo = usuario_atual and usuario_atual.perfil == 'campo' %}
-{% if campo %}
-{% set nav = [('Equipe', [('atendimento', 'Atendimento', 'clipboard')])] %}
+{% set vet = modo == 'veterinario' %}
+{% if vet %}
+{% set nav = [('Veterinário', [('atendimento', 'Atendimento', 'clipboard'), ('calendario', 'Calendário', 'calendar')])] %}
+{% set cur_map = {'tutor_perfil': 'atendimento', 'animal_perfil': 'atendimento'} %}
 {% else %}
 {% set nav = [
-  ('Agenda', [('index', 'Início', 'home'), ('calendario', 'Calendário', 'calendar'), ('atendimento', 'Atendimento', 'clipboard'), ('agendamentos', 'Novo agendamento', 'plus'), ('relatorios', 'Relatórios', 'chart')]),
+  ('Agenda', [('index', 'Início', 'home'), ('calendario', 'Calendário', 'calendar'), ('agendamentos', 'Novo agendamento', 'plus'), ('relatorios', 'Relatórios', 'chart')]),
   ('Tutores', [('procurar_tutor', 'Procurar tutor', 'search'), ('cadastrar_tutor', 'Cadastrar tutor', 'plus')]),
   ('Animais', [('procurar_animal', 'Procurar animal', 'search'), ('cadastrar_animal', 'Cadastrar animal', 'plus')])
 ] %}
+{% set cur_map = {'tutor_perfil': 'procurar_tutor', 'ver_documento': 'procurar_tutor', 'editar_animal': 'procurar_animal', 'animal_perfil': 'procurar_animal'} %}
 {% endif %}
-{% set cur = {'tutor_perfil': 'procurar_tutor', 'ver_documento': 'procurar_tutor', 'editar_animal': 'procurar_animal', 'animal_perfil': 'procurar_animal'}.get(request.endpoint, request.endpoint) %}
+{% set cur = cur_map.get(request.endpoint, request.endpoint) %}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -26,7 +28,7 @@
         <span class="brand">{{ icon('paw', 22) }}CastraMóvel</span>
     </header>
     <aside class="sidebar" id="sidebar">
-        <a class="brand" href="{{ url_for('atendimento' if campo else 'index') }}">{{ icon('paw', 22) }}CastraMóvel</a>
+        <a class="brand" href="{{ url_for('atendimento' if vet else 'index') }}">{{ icon('paw', 22) }}CastraMóvel</a>
         <nav aria-label="Principal">
             {% for group, items in nav %}
             <div class="nav-group">
@@ -39,19 +41,26 @@
         </nav>
         <div class="nav-user">
             <span class="nav-title">Conectado como {{ usuario_atual.email or usuario_atual.nome }}</span>
+            <span class="perfil-atual">Perfil: <strong>{{ nome_modo }}</strong></span>
+            {% if pode_trocar %}
+            <form method="POST" action="{{ url_for('trocar_perfil') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="modo" value="{{ outro_modo }}"><button type="submit" class="nav-link trocar-perfil">{{ icon('switch') }}Trocar para {{ nome_outro_modo }}</button></form>
+            {% endif %}
             <a href="{{ url_for('alterar_senha') }}" class="nav-link{% if cur == 'alterar_senha' %} active{% endif %}">{{ icon('key') }}Alterar senha</a>
             <form method="POST" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="nav-link">{{ icon('logout') }}Sair</button></form>
         </div>
     </aside>
     <div class="scrim" id="scrim"></div>
-    {% if not campo %}
     <nav class="bottom-nav" aria-label="Atalhos">
-        {% for ep, label, ic in [('index', 'Início', 'home'), ('calendario', 'Calendário', 'calendar'), ('atendimento', 'Atendimento', 'clipboard'), ('agendamentos', 'Agendar', 'plus')] %}
+        {% if vet %}
+        {% set atalhos = [('atendimento', 'Atendimento', 'clipboard'), ('calendario', 'Calendário', 'calendar')] %}
+        {% else %}
+        {% set atalhos = [('index', 'Início', 'home'), ('calendario', 'Calendário', 'calendar'), ('agendamentos', 'Agendar', 'plus')] %}
+        {% endif %}
+        {% for ep, label, ic in atalhos %}
         <a href="{{ url_for(ep) }}" class="bn-item{% if cur == ep %} active{% endif %}"{% if cur == ep %} aria-current="page"{% endif %}>{{ icon(ic, 22) }}<span>{{ label }}</span></a>
         {% endfor %}
         <button type="button" class="bn-item" data-menu-toggle aria-controls="sidebar">{{ icon('menu', 22) }}<span>Menu</span></button>
     </nav>
-    {% endif %}
     {% endif %}
     <main class="content{% if not usuario_atual %} bare{% endif %}">
         <div class="page">

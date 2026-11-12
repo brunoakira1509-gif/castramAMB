@@ -2,7 +2,7 @@
 
 {#- Agenda de um dia: cada horário com sua categoria, os animais agendados e as vagas livres.
     Usada no Início (hoje) e no Calendário (dia escolhido). -#}
-{% macro linha_agendamento(ag, dia, hoje, voltar) %}
+{% macro linha_agendamento(ag, dia, hoje, voltar, editar=True) %}
 <li class="slot-item">
     <div class="who">
         <a class="who-animal" href="{{ url_for('animal_perfil', id=ag.animal.id) }}">{{ icon('paw', 16) }}{{ ag.animal.nome }}</a>
@@ -13,7 +13,7 @@
         <span class="muted">Tutor</span>
         <a href="{{ url_for('tutor_perfil', id=ag.animal.tutor.id) }}">{{ ag.animal.tutor.nome_completo }}</a>
     </div>
-    {% if dia >= hoje %}
+    {% if editar and dia >= hoje %}
     <form method="POST" action="{{ url_for('cancelar_agendamento', id=ag.id) }}" class="slot-action">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="voltar" value="{{ voltar }}">
@@ -23,7 +23,7 @@
 </li>
 {% endmacro %}
 
-{% macro grade_dia(grade, dia, hoje, voltar) %}
+{% macro grade_dia(grade, dia, hoje, voltar, editar=True) %}
 <div class="agenda-dia">
     {% for hv in grade.horarios %}
     <section class="slot">
@@ -37,11 +37,11 @@
                     <span class="badge{% if vaga.cheia %} full{% elif vaga.ocupadas == 0 %} empty{% endif %}" title="Vagas ocupadas / total">{{ vaga.ocupadas }}/{{ vaga.categoria.limite }}</span>
                 </div>
                 <ul class="slot-list">
-                    {% for ag in vaga.agendamentos %}{{ linha_agendamento(ag, dia, hoje, voltar) }}{% endfor %}
+                    {% for ag in vaga.agendamentos %}{{ linha_agendamento(ag, dia, hoje, voltar, editar) }}{% endfor %}
                     {% if vaga.livres %}
                     <li class="slot-item livre">
                         <span class="muted">{{ vaga.livres }} {{ 'vaga livre' if vaga.livres == 1 else 'vagas livres' }}</span>
-                        {% if dia >= hoje and dia.weekday() < 5 %}
+                        {% if editar and dia >= hoje and dia.weekday() < 5 %}
                         <a class="btn-link" href="{{ url_for('agendamentos', data=dia.isoformat(), hora=hora_texto(hv.horario.hora)) }}">{{ icon('plus', 14) }}Agendar</a>
                         {% endif %}
                     </li>
@@ -69,7 +69,7 @@
                             <span class="muted">{{ nome_especie(ag.animal.especie) }} · {{ nome_sexo(ag.animal.sexo) }}</span>
                         </div>
                         <div class="who-tutor"><span class="muted">Tutor</span> <a href="{{ url_for('tutor_perfil', id=ag.animal.tutor.id) }}">{{ ag.animal.tutor.nome_completo }}</a></div>
-                        {% if dia >= hoje %}
+                        {% if editar and dia >= hoje %}
                         <form method="POST" action="{{ url_for('cancelar_agendamento', id=ag.id) }}" class="slot-action">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="voltar" value="{{ voltar }}">
