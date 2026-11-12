@@ -27,4 +27,20 @@
         <div class="form-actions"><button type="submit" class="btn">{{ icon('download') }}Baixar Excel</button></div>
     </form>
 </div>
+<form method="GET" action="{{ url_for('gerar_csv_animalltag') }}" class="card">
+    <div class="card-head"><h2>AnimallTAG: tutor e microchip (CSV)</h2></div>
+    <p class="muted small">Lista os animais agendados no período que têm microchip cadastrado, com os dados do tutor, para enviar ao AnimallTAG. Cada animal sai uma vez só.</p>
+    {% if not layout_confirmado %}
+    <div class="notice mt-10">Layout provisório: confira os nomes e a ordem das colunas com o modelo de planilha do AnimallTAG antes de enviar (veja <code>exportacao.py</code>).</div>
+    {% endif %}
+    <div class="form-grid mt-16">
+        <div class="field"><label for="de">De</label><input type="date" id="de" name="de" data-today="month-start" required></div>
+        <div class="field"><label for="ate">Até</label><input type="date" id="ate" name="ate" data-today="date" required></div>
+        <div class="field full check-field">
+            <input type="checkbox" id="presentes" name="presentes" value="1" checked>
+            <label for="presentes">Somente animais com presença marcada</label>
+        </div>
+    </div>
+    <div class="form-actions"><button type="submit" class="btn">{{ icon('download') }}Baixar CSV</button></div>
+</form>
 {% endblock %}

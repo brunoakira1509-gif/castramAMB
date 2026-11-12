@@ -14,17 +14,17 @@
 </form>
 {% if animais %}
 <div class="card flush table-wrap">
-    <table class="table">
+    <table class="table stack">
         <thead><tr><th>Nome</th><th>Espécie</th><th>Raça</th><th>Sexo</th><th>Microchip</th><th>Tutor</th></tr></thead>
         <tbody>
         {% for animal in animais %}
             <tr>
-                <td><a href="{{ url_for('animal_perfil', id=animal.id) }}">{{ animal.nome }}</a></td>
-                <td>{{ nome_especie(animal.especie) }}</td>
-                <td>{{ animal.raca }}</td>
-                <td>{{ 'Macho' if animal.sexo == 'macho' else 'Fêmea' }}</td>
-                <td>{% if animal.microchip %}{{ animal.microchip }}{% else %}<span class="muted">Sem microchip</span>{% endif %}</td>
-                <td><a href="{{ url_for('tutor_perfil', id=animal.tutor.id) }}">{{ animal.tutor.nome_completo }}</a></td>
+                <td data-label="Nome"><a href="{{ url_for('animal_perfil', id=animal.id) }}">{{ animal.nome }}</a></td>
+                <td data-label="Espécie">{{ nome_especie(animal.especie) }}</td>
+                <td data-label="Raça">{{ animal.raca }}</td>
+                <td data-label="Sexo">{{ 'Macho' if animal.sexo == 'macho' else 'Fêmea' }}</td>
+                <td data-label="Microchip">{% if animal.microchip %}{{ animal.microchip }}{% else %}<span class="muted">Sem microchip</span>{% endif %}</td>
+                <td data-label="Tutor"><a href="{{ url_for('tutor_perfil', id=animal.tutor.id) }}">{{ animal.tutor.nome_completo }}</a></td>
             </tr>
         {% endfor %}
         </tbody>

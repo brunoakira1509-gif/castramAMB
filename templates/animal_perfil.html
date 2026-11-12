@@ -38,14 +38,14 @@
     <div class="card-head"><h2>Agendamentos</h2></div>
     {% if historico %}
     <div class="table-wrap">
-        <table class="table">
+        <table class="table stack">
             <thead><tr><th>Data</th><th>Hora</th><th>Situação</th><th></th></tr></thead>
             <tbody>
             {% for ag in historico %}
                 <tr>
-                    <td><a href="{{ url_for('calendario', mes='%d-%02d' % (ag.data.year, ag.data.month), dia=ag.data.isoformat()) }}">{{ ag.data.strftime('%d/%m/%Y') }}</a></td>
-                    <td>{{ hora_texto(ag.hora) }}</td>
-                    <td>{% if ag.data >= hoje %}<span class="badge">Agendado</span>{% else %}<span class="badge empty">Registro anterior</span>{% endif %}</td>
+                    <td data-label="Data"><a href="{{ url_for('calendario', mes='%d-%02d' % (ag.data.year, ag.data.month), dia=ag.data.isoformat()) }}">{{ ag.data.strftime('%d/%m/%Y') }}</a></td>
+                    <td data-label="Hora">{{ hora_texto(ag.hora) }}</td>
+                    <td data-label="Situação">{% if ag.data >= hoje %}<span class="badge">Agendado</span>{% else %}<span class="badge empty">Registro anterior</span>{% endif %}</td>
                     <td class="right">
                         {% if ag.data >= hoje %}
                         <form method="POST" action="{{ url_for('cancelar_agendamento', id=ag.id) }}">

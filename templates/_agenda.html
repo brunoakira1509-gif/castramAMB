@@ -6,7 +6,8 @@
 <li class="slot-item">
     <div class="who">
         <a class="who-animal" href="{{ url_for('animal_perfil', id=ag.animal.id) }}">{{ icon('paw', 16) }}{{ ag.animal.nome }}</a>
-        <span class="muted">{{ nome_especie(ag.animal.especie) }} · {{ nome_sexo(ag.animal.sexo) }}{% if ag.animal.raca %} · {{ ag.animal.raca }}{% endif %}</span>
+        <span class="muted">{{ nome_especie(ag.animal.especie) }} · {{ nome_sexo(ag.animal.sexo) }}{% if ag.animal.raca %} · {{ ag.animal.raca }}{% endif %}
+            {% if ag.presente is sameas true %}<span class="pill ok">Presente</span>{% elif ag.presente is sameas false %}<span class="pill no">Faltou</span>{% endif %}</span>
     </div>
     <div class="who-tutor">
         <span class="muted">Tutor</span>

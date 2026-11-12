@@ -1,8 +1,9 @@
 (function () {
     var body = document.body;
-    var toggle = document.getElementById('menu-toggle');
     var scrim = document.getElementById('scrim');
-    if (toggle) toggle.addEventListener('click', function () { body.classList.toggle('menu-open'); });
+    document.querySelectorAll('[data-menu-toggle]').forEach(function (botao) {
+        botao.addEventListener('click', function () { body.classList.toggle('menu-open'); });
+    });
     if (scrim) scrim.addEventListener('click', function () { body.classList.remove('menu-open'); });
 
     function pad(n) { return String(n).padStart(2, '0'); }
@@ -12,7 +13,15 @@
     // Valores padrão com base na data de hoje (relatórios)
     document.querySelectorAll('[data-today]').forEach(function (el) {
         var kind = el.dataset.today;
-        el.value = kind === 'year' ? now.getFullYear() : kind === 'month' ? now.getMonth() + 1 : iso;
+        el.value = kind === 'year' ? now.getFullYear() : kind === 'month' ? now.getMonth() + 1
+            : kind === 'month-start' ? now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-01' : iso;
+    });
+
+    // No celular, ao tocar num dia do calendário a página rola direto para os detalhes do dia
+    document.querySelectorAll('a.cal-day').forEach(function (dia) {
+        dia.addEventListener('click', function () {
+            if (window.matchMedia('(max-width: 860px)').matches && dia.href.indexOf('#') === -1) dia.href += '#dia';
+        });
     });
 
     // Agendamento: apenas de segunda a sexta, a partir de hoje

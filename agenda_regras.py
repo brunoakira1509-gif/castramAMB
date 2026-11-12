@@ -8,7 +8,7 @@ COMO ALTERAR AS VAGAS: edite apenas a lista GRADE logo abaixo. O resto do sistem
 """
 import calendar
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 try:
     from zoneinfo import ZoneInfo
@@ -273,3 +273,23 @@ def ler_mes(texto, padrao):
     except ValueError:
         pass
     return padrao.year, padrao.month
+
+
+
+# ---------------------------------------------------------------------------
+# Dia do atendimento: presença e navegação entre dias úteis
+# ---------------------------------------------------------------------------
+def resumo_presenca(agendamentos):
+    """Contagem para o topo da tela de atendimento. `presente`: True = compareceu, False = faltou, None = aguardando."""
+    presentes = sum(1 for ag in agendamentos if ag.presente is True)
+    faltaram = sum(1 for ag in agendamentos if ag.presente is False)
+    total = len(agendamentos)
+    return {'total': total, 'presentes': presentes, 'faltaram': faltaram, 'aguardando': total - presentes - faltaram}
+
+
+def dia_util_vizinho(dia, passo):
+    """Dia útil anterior (passo=-1) ou seguinte (passo=1), pulando sábado e domingo."""
+    vizinho = dia + timedelta(days=passo)
+    while not dia_util(vizinho):
+        vizinho += timedelta(days=passo)
+    return vizinho

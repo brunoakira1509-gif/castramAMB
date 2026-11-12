@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Atendimento{% endblock %}
+
+{% macro cartao(ag, pode_marcar, voltar, mostrar_hora=False) %}
+<article class="atend-card{% if ag.presente is sameas true %} is-presente{% elif ag.presente is sameas false %} is-faltou{% endif %}" id="ag-{{ ag.id }}">
+    <header class="atend-head">
+        <h3>{% if mostrar_hora %}<span class="muted">{{ hora_texto(ag.hora) }} ·</span> {% endif %}{{ ag.animal.nome }}</h3>
+        <div class="tags">
+            <span class="tag {{ ag.animal.especie }}">{{ nome_especie(ag.animal.especie) }}</span>
+            <span class="tag sexo-{{ ag.animal.sexo }}">{{ nome_sexo(ag.animal.sexo) }}</span>
+        </div>
+    </header>
+    {% if ag.animal.raca or ag.animal.microchip %}
+    <p class="muted atend-line">{{ ag.animal.raca }}{% if ag.animal.microchip %}{% if ag.animal.raca %} · {% endif %}Microchip {{ ag.animal.microchip }}{% endif %}</p>
+    {% endif %}
+    <p class="atend-line atend-tutor">
+        <span class="muted">Tutor</span>
+        <strong>{{ ag.animal.tutor.nome_completo }}</strong>
+        {% if so_digitos(ag.animal.tutor.telefone) %}<a class="tel" href="tel:{{ so_digitos(ag.animal.tutor.telefone) }}">{{ icon('phone', 16) }}{{ ag.animal.tutor.telefone }}</a>{% endif %}
+    </p>
+    {% if pode_marcar %}
+    <form method="POST" action="{{ url_for('marcar_presenca', id=ag.id) }}" class="presenca">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="voltar" value="{{ voltar }}">
+        <button type="submit" name="valor" value="{{ 'limpar' if ag.presente is sameas true else 'presente' }}" class="pbtn ok{% if ag.presente is sameas true %} on{% endif %}" aria-pressed="{{ 'true' if ag.presente is sameas true else 'false' }}">{{ icon('check', 20) }}Presente</button>
+        <button type="submit" name="valor" value="{{ 'limpar' if ag.presente is sameas false else 'faltou' }}" class="pbtn no{% if ag.presente is sameas false %} on{% endif %}" aria-pressed="{{ 'true' if ag.presente is sameas false else 'false' }}">{{ icon('x', 20) }}Faltou</button>
+    </form>
+    {% elif ag.presente is sameas true %}<p class="atend-status ok">Presente</p>
+    {% elif ag.presente is sameas false %}<p class="atend-status no">Faltou</p>
+    {% endif %}
+</article>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Atendimento</h1>
+        <p class="muted">{{ data_extensa(dia) }}{% if dia == hoje %} · hoje{% endif %}</p>
+    </div>
+</div>
+
+<nav class="dia-nav" aria-label="Trocar de dia">
+    <a class="btn secondary" href="{{ url_for('atendimento', data=anterior.isoformat()) }}" aria-label="Dia útil anterior">{{ icon('chev-left', 20) }}</a>
+    <a class="btn secondary grow" href="{{ url_for('atendimento') }}">Hoje</a>
+    <a class="btn secondary" href="{{ url_for('atendimento', data=seguinte.isoformat()) }}" aria-label="Próximo dia útil">{{ icon('chev-right', 20) }}</a>
+</nav>
+
+{% if not util %}
+<section class="card"><div class="empty left"><p><strong>Não há atendimento neste dia.</strong> A castração acontece de segunda a sexta.</p>
+    <a class="btn" href="{{ url_for('atendimento', data=seguinte.isoformat()) }}">Ir para {{ seguinte.strftime('%d/%m') }}</a></div></section>
+{% elif grade.total == 0 %}
+<section class="card"><div class="empty left"><p><strong>Nenhum animal agendado neste dia.</strong></p></div></section>
+{% else %}
+<div class="resumo-presenca" role="status">
+    <div><strong>{{ resumo.total }}</strong><span>agendados</span></div>
+    <div class="ok"><strong>{{ resumo.presentes }}</strong><span>presentes</span></div>
+    <div class="no"><strong>{{ resumo.faltaram }}</strong><span>faltaram</span></div>
+    <div><strong>{{ resumo.aguardando }}</strong><span>aguardando</span></div>
+</div>
+{% if pode_marcar %}<p class="hint">Toque em “Presente” ou “Faltou”. Tocar de novo no botão marcado desfaz.</p>
+{% else %}<p class="notice">Este dia ainda não chegou: a presença só pode ser marcada a partir do dia do atendimento.</p>{% endif %}
+
+{% for hv in grade.horarios if hv.ocupadas %}
+<section class="atend-slot">
+    <h2 class="atend-hora">{{ hora_texto(hv.horario.hora) }}</h2>
+    {% for vaga in hv.vagas if vaga.agendamentos %}
+    <p class="atend-cat">{{ vaga.categoria.rotulo }} <span class="muted">({{ vaga.categoria.detalhe }})</span></p>
+    {% for ag in vaga.agendamentos %}{{ cartao(ag, pode_marcar, voltar) }}{% endfor %}
+    {% endfor %}
+</section>
+{% endfor %}
+{% if grade.avulsos %}
+<section class="atend-slot">
+    <h2 class="atend-hora">Outros</h2>
+    <p class="atend-cat muted">Fora da grade de horários</p>
+    {% for ag in grade.avulsos %}{{ cartao(ag, pode_marcar, voltar, True) }}{% endfor %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

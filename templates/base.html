@@ -1,26 +1,32 @@
 {% from "_icons.html" import icon %}
+{% set campo = usuario_atual and usuario_atual.perfil == 'campo' %}
+{% if campo %}
+{% set nav = [('Equipe', [('atendimento', 'Atendimento', 'clipboard')])] %}
+{% else %}
 {% set nav = [
-  ('Agenda', [('index', 'Início', 'home'), ('calendario', 'Calendário', 'calendar'), ('agendamentos', 'Novo agendamento', 'plus'), ('relatorios', 'Relatórios', 'chart')]),
+  ('Agenda', [('index', 'Início', 'home'), ('calendario', 'Calendário', 'calendar'), ('atendimento', 'Atendimento', 'clipboard'), ('agendamentos', 'Novo agendamento', 'plus'), ('relatorios', 'Relatórios', 'chart')]),
   ('Tutores', [('procurar_tutor', 'Procurar tutor', 'search'), ('cadastrar_tutor', 'Cadastrar tutor', 'plus')]),
   ('Animais', [('procurar_animal', 'Procurar animal', 'search'), ('cadastrar_animal', 'Cadastrar animal', 'plus')])
 ] %}
+{% endif %}
 {% set cur = {'tutor_perfil': 'procurar_tutor', 'ver_documento': 'procurar_tutor', 'editar_animal': 'procurar_animal', 'animal_perfil': 'procurar_animal'}.get(request.endpoint, request.endpoint) %}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0f6b5c">
     <title>{% block title %}{% endblock %} - CastraMóvel</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     {% if usuario_atual %}
     <header class="topbar">
-        <button type="button" class="icon-btn" id="menu-toggle" aria-label="Abrir menu" aria-controls="sidebar">{{ icon('menu', 22) }}</button>
+        <button type="button" class="icon-btn" data-menu-toggle aria-label="Abrir menu" aria-controls="sidebar">{{ icon('menu', 22) }}</button>
         <span class="brand">{{ icon('paw', 22) }}CastraMóvel</span>
     </header>
     <aside class="sidebar" id="sidebar">
-        <a class="brand" href="{{ url_for('index') }}">{{ icon('paw', 22) }}CastraMóvel</a>
+        <a class="brand" href="{{ url_for('atendimento' if campo else 'index') }}">{{ icon('paw', 22) }}CastraMóvel</a>
         <nav aria-label="Principal">
             {% for group, items in nav %}
             <div class="nav-group">
@@ -38,6 +44,14 @@
         </div>
     </aside>
     <div class="scrim" id="scrim"></div>
+    {% if not campo %}
+    <nav class="bottom-nav" aria-label="Atalhos">
+        {% for ep, label, ic in [('index', 'Início', 'home'), ('calendario', 'Calendário', 'calendar'), ('atendimento', 'Atendimento', 'clipboard'), ('agendamentos', 'Agendar', 'plus')] %}
+        <a href="{{ url_for(ep) }}" class="bn-item{% if cur == ep %} active{% endif %}"{% if cur == ep %} aria-current="page"{% endif %}>{{ icon(ic, 22) }}<span>{{ label }}</span></a>
+        {% endfor %}
+        <button type="button" class="bn-item" data-menu-toggle aria-controls="sidebar">{{ icon('menu', 22) }}<span>Menu</span></button>
+    </nav>
+    {% endif %}
     {% endif %}
     <main class="content{% if not usuario_atual %} bare{% endif %}">
         <div class="page">

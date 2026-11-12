@@ -14,14 +14,14 @@
 </form>
 {% if tutores %}
 <div class="card flush table-wrap">
-    <table class="table">
+    <table class="table stack">
         <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th></tr></thead>
         <tbody>
         {% for tutor in tutores %}
             <tr>
-                <td><a href="{{ url_for('tutor_perfil', id=tutor.id) }}">{{ tutor.nome_completo }}</a></td>
-                <td>{{ tutor.cpf }}</td>
-                <td>{{ tutor.telefone }}</td>
+                <td data-label="Nome"><a href="{{ url_for('tutor_perfil', id=tutor.id) }}">{{ tutor.nome_completo }}</a></td>
+                <td data-label="CPF">{{ tutor.cpf }}</td>
+                <td data-label="Telefone">{{ tutor.telefone }}</td>
             </tr>
         {% endfor %}
         </tbody>

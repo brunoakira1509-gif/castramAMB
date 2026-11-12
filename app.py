@@ -18,9 +18,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import deferred, joinedload
 from werkzeug.exceptions import HTTPException
 
-from agenda_regras import (DIAS_CURTOS, MESES, data_extensa, dia_util, hoje, hora_texto, ler_data,
-                           ler_mes, mes_vizinho, montar_grade, opcoes_para_animal, resumo_dia,
-                           semanas_do_mes, verificar_vaga)
+import exportacao
+from agenda_regras import (DIAS_CURTOS, MESES, data_extensa, dia_util, dia_util_vizinho, hoje, hora_texto,
+                           ler_data, ler_mes, mes_vizinho, montar_grade, opcoes_para_animal, resumo_dia,
+                           resumo_presenca, semanas_do_mes, verificar_vaga)
 from config import BASE_DIR, USAR_HTTPS, segredo, url_do_banco
 from seguranca import (SENHA_MAX, ErroDeCriptografia, TextoCriptografado, cifrar_bytes, decifrar_bytes, hash_senha,
                        indice_cego, normalizar, validar_chaves, verificar_senha)
@@ -78,6 +79,9 @@ class Usuario(db.Model):
     nome = db.Column(db.String(50), unique=True, nullable=False)
     senha_hash = db.Column(db.String(255), nullable=False)
     email = db.Column(enc('usuario.email'), nullable=True)
+    # 'admin' vê o sistema todo; 'campo' (equipe no local) só vê a tela Atendimento.
+    # Contas novas entram como 'campo' (menor acesso); quem já existia ficou 'admin' pelo supabase_schema.sql.
+    perfil = db.Column(db.String(20), nullable=False, default='campo', server_default='admin')
 
     def definir_email(self, email):
         self.email = email.strip().lower()
@@ -136,6 +140,7 @@ class Agendamento(db.Model):
     data = db.Column(db.Date, nullable=False)
     hora = db.Column(db.Time, nullable=False)
     animal_id = db.Column(db.Integer, db.ForeignKey('animal.id'), nullable=False)
+    presente = db.Column(db.Boolean, nullable=True)  # None = aguardando, True = compareceu, False = faltou
     animal = db.relationship('Animal', backref='agendamentos')
 
 
@@ -220,6 +225,7 @@ def csrf_token():
 app.jinja_env.globals['csrf_token'] = csrf_token
 app.jinja_env.globals['nome_especie'] = nome_especie
 app.jinja_env.globals['nome_sexo'] = nome_sexo
+app.jinja_env.globals['so_digitos'] = so_digitos
 app.jinja_env.globals['hora_texto'] = hora_texto
 app.jinja_env.globals['data_extensa'] = data_extensa
 app.jinja_env.globals['DIAS_CURTOS'] = DIAS_CURTOS
@@ -268,6 +274,9 @@ def destino_seguro(destino):
     return url_for('index')
 
 
+ROTAS_CAMPO = {'atendimento', 'marcar_presenca', 'alterar_senha', 'logout'}  # o que a equipe de campo pode abrir
+
+
 @app.before_request
 def exigir_login():
     endpoint = request.endpoint
@@ -275,7 +284,11 @@ def exigir_login():
         return None
     g.usuario = db.session.get(Usuario, session['usuario_id']) if session.get('usuario_id') else None
     if g.usuario:
-        return redirect(url_for('index')) if endpoint == 'login' else None
+        if endpoint == 'login':
+            return redirect(url_for('index'))
+        if g.usuario.perfil == 'campo' and endpoint not in ROTAS_CAMPO:
+            return redirect(url_for('atendimento')) if request.method == 'GET' else abort(403)
+        return None
     if endpoint != 'login':
         session.clear()
         return redirect(url_for('login', proximo=request.path if request.method == 'GET' else None))
@@ -893,6 +906,35 @@ def cancelar_agendamento(id):
 
 
 # ---------------------------------------------------------------------------
+# Atendimento (equipe no local): quem está agendado no dia e marcação de presença
+# ---------------------------------------------------------------------------
+@app.route('/atendimento')
+def atendimento():
+    hj = hoje()
+    dia = ler_data(request.args.get('data')) or hj
+    lista = agendamentos_do_dia(dia)
+    return render_template('atendimento.html', dia=dia, grade=montar_grade(lista), util=dia_util(dia),
+                           resumo=resumo_presenca(lista), pode_marcar=dia <= hj,
+                           anterior=dia_util_vizinho(dia, -1), seguinte=dia_util_vizinho(dia, 1),
+                           voltar=url_for('atendimento', data=dia.isoformat()))
+
+
+@app.route('/atendimento/<int:id>/presenca', methods=['POST'])
+def marcar_presenca(id):
+    ag = db.get_or_404(Agendamento, id)
+    valor = request.form.get('valor')
+    if valor not in ('presente', 'faltou', 'limpar'):
+        abort(400)
+    destino = destino_seguro(request.form.get('voltar')) + f'#ag-{ag.id}'
+    if ag.data > hoje():
+        flash('A presença só pode ser marcada a partir do dia do atendimento.', 'error')
+    else:
+        ag.presente = {'presente': True, 'faltou': False, 'limpar': None}[valor]
+        db.session.commit()
+    return redirect(destino)
+
+
+# ---------------------------------------------------------------------------
 # Relatórios. Os dados são descriptografados em memória só na hora de montar a planilha;
 # nada em claro é gravado no disco.
 # ---------------------------------------------------------------------------
@@ -981,9 +1023,39 @@ def gerar_excel_dia():
     return send_file(arquivo, as_attachment=True, download_name=f'agenda_{data_str}.xlsx', mimetype=XLSX)
 
 
+@app.route('/gerar_csv_animalltag')
+def gerar_csv_animalltag():
+    """CSV com tutor e microchip dos animais agendados no período, para enviar ao AnimallTAG."""
+    de, ate = ler_data(request.args.get('de')), ler_data(request.args.get('ate'))
+    if de is None or ate is None or ate < de or (ate - de).days > 366:
+        flash('Informe um período válido (data inicial e final, de até um ano).', 'error')
+        return redirect(url_for('relatorios'))
+    so_presentes = request.args.get('presentes') == '1'
+    agendamentos = (Agendamento.query.options(joinedload(Agendamento.animal).joinedload(Animal.tutor))
+                    .filter(Agendamento.data.between(de, ate))
+                    .order_by(Agendamento.data, Agendamento.hora, Agendamento.id).all())
+    linhas, vistos = [], set()
+    for ag in agendamentos:
+        animal = ag.animal
+        if (so_presentes and ag.presente is not True) or animal.id in vistos or not animal.microchip:
+            continue
+        vistos.add(animal.id)
+        tutor = animal.tutor
+        linhas.append({'microchip': animal.microchip, 'animal': animal.nome, 'especie': nome_especie(animal.especie),
+                       'raca': animal.raca, 'sexo': nome_sexo(animal.sexo), 'tutor': tutor.nome_completo,
+                       'cpf': tutor.cpf, 'telefone': tutor.telefone, 'endereco': tutor.endereco,
+                       'numero': tutor.numero, 'data': ag.data.isoformat()})
+    if not linhas:
+        flash('Nenhum animal com microchip cadastrado nesse período'
+              + (' e com presença marcada.' if so_presentes else '.'), 'error')
+        return redirect(url_for('relatorios'))
+    return send_file(io.BytesIO(exportacao.montar_csv(linhas)), as_attachment=True,
+                     download_name=f'animalltag_{de.isoformat()}_{ate.isoformat()}.csv', mimetype='text/csv')
+
+
 @app.route('/relatorios')
 def relatorios():
-    return render_template('relatorios.html')
+    return render_template('relatorios.html', layout_confirmado=exportacao.LAYOUT_CONFIRMADO)
 
 
 if __name__ == '__main__':

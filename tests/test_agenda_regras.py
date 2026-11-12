@@ -6,9 +6,9 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agenda_regras import (GRADE, categoria_para, data_extensa, hora_texto, ler_data, ler_mes,  # noqa: E402
-                           mes_vizinho, montar_grade, opcoes_para_animal, resumo_dia, semanas_do_mes,
-                           verificar_vaga)
+from agenda_regras import (GRADE, categoria_para, data_extensa, dia_util_vizinho, hora_texto, ler_data,  # noqa: E402
+                           ler_mes, mes_vizinho, montar_grade, opcoes_para_animal, resumo_dia, resumo_presenca,
+                           semanas_do_mes, verificar_vaga)
 
 _ids = iter(range(1, 10_000))
 
@@ -169,6 +169,23 @@ class DatasTests(unittest.TestCase):
         self.assertEqual(ler_data('2026-11-12'), date(2026, 11, 12))
         self.assertIsNone(ler_data('12/11/2026'))
         self.assertIsNone(ler_data(None))
+
+
+class PresencaTests(unittest.TestCase):
+    def test_presence_summary(self):
+        def com(presente):
+            a = ag(H0800, 'gato', 'femea')
+            a.presente = presente
+            return a
+        resumo = resumo_presenca([com(True), com(True), com(False), com(None)])
+        self.assertEqual(resumo, {'total': 4, 'presentes': 2, 'faltaram': 1, 'aguardando': 1})
+        self.assertEqual(resumo_presenca([])['total'], 0)
+
+    def test_business_day_navigation_skips_weekends(self):
+        self.assertEqual(dia_util_vizinho(date(2026, 11, 13), 1), date(2026, 11, 16))   # sexta -> segunda
+        self.assertEqual(dia_util_vizinho(date(2026, 11, 16), -1), date(2026, 11, 13))  # segunda -> sexta
+        self.assertEqual(dia_util_vizinho(date(2026, 11, 11), 1), date(2026, 11, 12))
+        self.assertEqual(dia_util_vizinho(date(2026, 11, 14), 1), date(2026, 11, 16))   # sábado -> segunda
 
 
 if __name__ == '__main__':

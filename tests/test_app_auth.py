@@ -89,8 +89,8 @@ class AppAuthTests(unittest.TestCase):
         _, error = ler_animal(fields)
         self.assertIsNotNone(error)
 
-    def _login(self):
-        user = Usuario(nome='ana', senha_hash=hash_senha('senha forte 123'))
+    def _login(self, perfil='admin'):
+        user = Usuario(nome='ana', senha_hash=hash_senha('senha forte 123'), perfil=perfil)
         db.session.add(user)
         db.session.commit()
         with self.client.session_transaction() as session:
@@ -231,6 +231,94 @@ class AppAuthTests(unittest.TestCase):
             self.assertIn(f'/animal/{cadela.id}', texto)
             self.assertIn(f'/tutor/{tutor.id}', texto)
 
+    def test_field_user_only_reaches_the_attendance_screen(self):
+        tutor = self._tutor()
+        self._login('campo')
+        resposta = self.client.get('/')
+        self.assertEqual(resposta.status_code, 302)
+        self.assertTrue(resposta.headers['Location'].endswith('/atendimento'))
+        for caminho in ('/calendario', '/agendamentos', '/procurar_tutor', f'/tutor/{tutor.id}', '/api/tutores',
+                        '/relatorios', '/gerar_csv_animalltag'):
+            self.assertEqual(self.client.get(caminho).status_code, 302, caminho)
+            self.assertTrue(self.client.get(caminho).headers['Location'].endswith('/atendimento'), caminho)
+        self.assertEqual(self.client.post('/agendar', data={'csrf_token': 'test-csrf'}).status_code, 403)
+        pagina = self.client.get('/atendimento')
+        self.assertEqual(pagina.status_code, 200)
+        self.assertNotIn(b'Procurar tutor', pagina.data)
+
+    def test_attendance_shows_species_tutor_and_marks_presence(self):
+        tutor = self._tutor('Maria de Souza')
+        gata = self._animal(tutor, 'Mimi', 'gato', 'femea')
+        ag = Agendamento(data=hoje(), hora=time(8, 0), animal_id=gata.id)
+        db.session.add(ag)
+        db.session.commit()
+        self._login('campo')
+
+        pagina = self.client.get('/atendimento').data.decode()
+        self.assertIn('Mimi', pagina)
+        self.assertIn('Gato', pagina)
+        self.assertIn('Maria de Souza', pagina)
+        self.assertIn('tel:11999999999', pagina)
+        self.assertNotIn('12345678909', pagina)  # o CPF não aparece para a equipe de campo
+
+        def marcar(valor):
+            return self.client.post(f'/atendimento/{ag.id}/presenca',
+                                    data={'csrf_token': 'test-csrf', 'valor': valor, 'voltar': '/atendimento'})
+        self.assertEqual(marcar('presente').status_code, 302)
+        db.session.refresh(ag)
+        self.assertIs(ag.presente, True)
+        marcar('faltou')
+        db.session.refresh(ag)
+        self.assertIs(ag.presente, False)
+        marcar('limpar')
+        db.session.refresh(ag)
+        self.assertIsNone(ag.presente)
+        self.assertEqual(marcar('qualquer coisa').status_code, 400)
+
+    def test_presence_cannot_be_marked_for_a_future_day(self):
+        tutor = self._tutor()
+        gata = self._animal(tutor, 'Mimi', 'gato', 'femea')
+        ag = Agendamento(data=hoje() + timedelta(days=2), hora=time(8, 0), animal_id=gata.id)
+        db.session.add(ag)
+        db.session.commit()
+        self._login('campo')
+        self.client.post(f'/atendimento/{ag.id}/presenca',
+                         data={'csrf_token': 'test-csrf', 'valor': 'presente', 'voltar': '/atendimento'})
+        db.session.refresh(ag)
+        self.assertIsNone(ag.presente)
+
+    def test_animalltag_csv_exports_tutor_and_microchip(self):
+        tutor = self._tutor('Maria de Souza', '12345678909')
+        com_chip = self._animal(tutor, 'Mimi', 'gato', 'femea')
+        com_chip.definir_microchip('985 112 345 678 901')
+        sem_chip = self._animal(tutor, 'Rex', 'cao', 'macho')
+        faltou = self._animal(tutor, 'Luna', 'cao', 'femea')
+        faltou.definir_microchip('985000000000002')
+        db.session.add_all([
+            Agendamento(data=hoje(), hora=time(8, 0), animal_id=com_chip.id, presente=True),
+            Agendamento(data=hoje(), hora=time(8, 30), animal_id=sem_chip.id, presente=True),
+            Agendamento(data=hoje(), hora=time(9, 30), animal_id=faltou.id, presente=False)])
+        db.session.commit()
+        self._login()
+        consulta = f'de={hoje().isoformat()}&ate={hoje().isoformat()}'
+
+        resposta = self.client.get(f'/gerar_csv_animalltag?{consulta}&presentes=1')
+        self.assertEqual(resposta.status_code, 200)
+        self.assertIn('text/csv', resposta.headers['Content-Type'])
+        linhas = resposta.data.decode('utf-8-sig').strip().split('\r\n')
+        self.assertEqual(len(linhas), 2)  # cabeçalho + só o animal presente e com microchip
+        self.assertIn('985112345678901', linhas[1])
+        self.assertIn('Maria de Souza', linhas[1])
+        self.assertIn('12345678909', linhas[1])
+
+        todos = self.client.get(f'/gerar_csv_animalltag?{consulta}').data.decode('utf-8-sig').strip().split('\r\n')
+        self.assertEqual(len(todos), 3)  # Mimi e Luna (Rex não tem microchip)
+
+        vazio = self.client.get('/gerar_csv_animalltag?de=2000-01-01&ate=2000-01-02')
+        self.assertEqual(vazio.status_code, 302)
+        invalido = self.client.get('/gerar_csv_animalltag?de=abc&ate=def')
+        self.assertEqual(invalido.status_code, 302)
+
     def test_document_is_stored_encrypted_and_viewable(self):
         import io
         tutor = self._tutor()
@@ -280,8 +368,9 @@ class AppAuthTests(unittest.TestCase):
         usuario = usuario_por_email('ana@example.com')
         self.assertIsNotNone(usuario)
         self.assertEqual(usuario.nome, 'supabase_67e5504410b1426f9247bb680e5fe0c8')
+        self.assertEqual(usuario.perfil, 'campo')  # contas novas começam com o menor acesso
         sign_in.assert_called_once_with('ana@example.com', 'senha forte 123')
-        response = self.client.get('/')
+        response = self.client.get('/', follow_redirects=True)  # conta nova (campo) cai na tela Atendimento
         self.assertIn(b'Conectado como ana@example.com', response.data)
 
     def test_unconfirmed_supabase_email_shows_confirmation_message(self):
