@@ -12,7 +12,7 @@ create table if not exists public.usuario (
 alter table public.usuario add column if not exists email text;
 
 -- Perfil de acesso: 'admin' usa a Administração e o Veterinário (e troca entre eles); 'veterinario' só usa a interface Veterinário.
--- Quem já existe fica 'admin'. Contas novas criadas pelo app entram como 'veterinario'.
+-- Contas novas criadas pelo app entram como 'admin'; defina 'veterinario' para conceder acesso limitado.
 -- Para mudar alguém:  python usuarios.py perfil EMAIL admin   (ou veterinario)
 alter table public.usuario add column if not exists perfil varchar(20) not null default 'admin';
 -- O perfil antigo 'campo' passou a se chamar 'veterinario':

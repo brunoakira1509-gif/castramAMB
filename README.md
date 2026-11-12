@@ -31,10 +31,11 @@ Este é um sistema web para organizar o serviço móvel de castração de animai
 | **Administração** | Início, Calendário, Novo agendamento, Relatórios, cadastro/busca/edição de tutores e animais, cancelar agendamentos. **Não tem** a aba Atendimento. |
 | **Veterinário** | **Atendimento** (marcar Presente/Faltou), **Calendário** (só leitura), ficha do **animal** e do **tutor** (só leitura; documentos anexados não aparecem). Única edição permitida: o **número do microchip** do animal. |
 
-- Quem já existia continua `admin` (o `supabase_schema.sql` faz isso). O perfil antigo `campo` virou `veterinario`.
-- **Contas novas entram como `veterinario`** no primeiro login (menor acesso por padrão).
-- Para mudar: `python usuarios.py perfil EMAIL admin` (ou `veterinario`). `python usuarios.py criar NOME veterinario` cria direto como veterinário.
-  `python usuarios.py listar` mostra o perfil de cada um.
+- Usuários que já eram `admin` continuam assim. O perfil antigo `campo` é tratado como `veterinario`.
+- **Contas novas entram como `admin`** no primeiro login e podem trocar entre as interfaces. Contas que já foram vinculadas como
+  `veterinario` continuam limitadas até serem promovidas com `python usuarios.py perfil EMAIL admin`.
+- Para conceder acesso limitado a uma conta: `python usuarios.py perfil EMAIL veterinario`. `python usuarios.py criar NOME veterinario`
+  cria direto como veterinário. `python usuarios.py listar` mostra o perfil de cada um.
 - As restrições são feitas no servidor: mesmo digitando o endereço de outra página, o veterinário volta ao Atendimento. Um admin
   que trocou para o modo Veterinário também fica limitado até trocar de volta.
 
@@ -89,9 +90,10 @@ hoje (cancele para reagendar). Não é possível mudar espécie/sexo de um anima
    pela senha do banco e cole em `DATABASE_URL` no `.env`.
 5. Tinha dados no sistema antigo (SQLite)? Rode `python migrar_sqlite.py`. Depois de conferir, apague
    `instance/castramovel.db` e `instance/uploads` antigos (estão em texto claro).
-6. Crie e confirme as contas em **Supabase > Authentication > Users**. Inicie (`iniciar_servidor.bat` ou `python serve.py`)
-   e acesse http://localhost:5000/ para entrar. O app cria o perfil local após o primeiro login confirmado.
-   Se apenas administradores devem criar contas, desative o cadastro público nas configurações de Auth.
+6. Desative o cadastro público em **Supabase > Authentication > Settings** e crie/confirme as contas em
+   **Supabase > Authentication > Users**. Contas novas recebem acesso de administrador no primeiro login confirmado;
+   deixar o cadastro público ativo permitiria que qualquer pessoa se registrasse como admin. Inicie (`iniciar_servidor.bat`
+   ou `python serve.py`) e acesse http://localhost:5000/ para entrar.
 
 Configure o envio de e-mail no Supabase Auth se quiser que links de confirmação sejam enviados para usuários fora da equipe do projeto.
 No Vercel, configure também `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL` e as quatro chaves `CASTRAMOVEL_*` no ambiente Production. Não são necessárias variáveis `SMTP_*` no Vercel.
@@ -124,7 +126,7 @@ No Vercel, configure também `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `DATABA
 
 - Entrar usando o e-mail e a senha cadastrados; a senha precisa ter no mínimo 10 caracteres.
 - Alterar a própria senha: menu lateral, "Alterar senha". Sem SMTP, não há recuperação por e-mail.
-- Criar usuários: `python usuarios.py criar NOME`. Trocar o e-mail: `python usuarios.py email NOME`. Alterar a senha pelo terminal exige a senha atual: `python usuarios.py senha NOME`.
+- Crie contas em **Supabase > Authentication > Users**. O comando `python usuarios.py criar NOME [veterinario]` depende do cadastro público estar habilitado e não deve ser usado com o padrão `admin`. Trocar o e-mail: `python usuarios.py email NOME`. Alterar a senha pelo terminal exige a senha atual: `python usuarios.py senha NOME`.
 - Listar ou remover usuários: `python usuarios.py listar` e `python usuarios.py remover NOME`.
 
 ## Estrutura do Projeto

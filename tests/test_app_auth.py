@@ -470,10 +470,16 @@ class AppAuthTests(unittest.TestCase):
         usuario = usuario_por_email('ana@example.com')
         self.assertIsNotNone(usuario)
         self.assertEqual(usuario.nome, 'supabase_67e5504410b1426f9247bb680e5fe0c8')
-        self.assertEqual(usuario.perfil, 'veterinario')  # contas novas começam com o menor acesso
+        self.assertEqual(usuario.perfil, 'admin')
         sign_in.assert_called_once_with('ana@example.com', 'senha forte 123')
-        response = self.client.get('/', follow_redirects=True)  # conta nova (veterinário) cai na tela Atendimento
+        response = self.client.get('/', follow_redirects=True)
         self.assertIn(b'Conectado como ana@example.com', response.data)
+        self.assertIn(b'Trocar para Veterin\xc3\xa1rio', response.data)
+        self._csrf()
+        response = self.client.post('/trocar_perfil', data={
+            'csrf_token': 'test-csrf', 'modo': 'veterinario',
+        })
+        self.assertTrue(response.headers['Location'].endswith('/atendimento'))
 
     def test_unconfirmed_supabase_email_shows_confirmation_message(self):
         self._csrf()

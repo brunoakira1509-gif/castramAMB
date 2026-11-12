@@ -81,8 +81,8 @@ class Usuario(db.Model):
     email = db.Column(enc('usuario.email'), nullable=True)
     # 'admin' pode usar as duas interfaces (Administração e Veterinário) e trocar entre elas.
     # 'veterinario' só usa a interface Veterinário (acesso limitado). O valor antigo 'campo' equivale a 'veterinario'.
-    # Contas novas entram como 'veterinario' (menor acesso); quem já existia ficou 'admin' pelo supabase_schema.sql.
-    perfil = db.Column(db.String(20), nullable=False, default='veterinario', server_default='admin')
+    # Contas novas entram como 'admin'; use 'veterinario' para conceder acesso limitado.
+    perfil = db.Column(db.String(20), nullable=False, default='admin', server_default='admin')
 
     @property
     def e_admin(self):
